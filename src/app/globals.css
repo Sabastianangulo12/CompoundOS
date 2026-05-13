@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-background text-foreground antialiased;
+  background-image:
+    radial-gradient(circle at top, rgba(214, 253, 81, 0.12), transparent 28%),
+    linear-gradient(180deg, #09090b 0%, #09090b 100%);
+}
+
+a {
+  @apply transition-colors;
+}
+
+@layer components {
+  .panel {
+    @apply rounded-2xl border border-border bg-card/80 backdrop-blur;
+  }
+}
+
