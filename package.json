@@ -7,7 +7,22 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "verify:premium": "node scripts/validate-premium-release.js",
+    "stress:ops": "node scripts/stress-ops-under-load.js",
+    "stress:multitenant": "node scripts/stress-multitenant.js",
+    "seed:multitenant": "node scripts/seed-multitenant-load.js",
+    "seed:schedule": "node scripts/seed-schedule-parity-data.js",
+    "seed:billing-recovery": "node scripts/seed-billing-recovery-data.js",
+    "verify:ops": "node scripts/check-ops-health.js",
+    "chaos:payments": "node scripts/chaos-payments-and-webhooks.js",
+    "verify:production-hardening": "node scripts/run-production-hardening-suite.js",
+    "supabase": "npx supabase",
+    "supabase:login": "npx supabase login",
+    "supabase:link": "npx supabase link --project-ref clxpuxsvlnsxaqdvizni",
+    "supabase:push": "npx supabase db push",
+    "supabase:pull": "npx supabase db pull",
+    "supabase:status": "npx supabase status"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
