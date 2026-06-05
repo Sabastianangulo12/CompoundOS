@@ -1,167 +1,182 @@
-# The Compound Lifting Club OS
+# Compound OS
 
-Multi-tenant gym management SaaS built with Next.js, TypeScript, Tailwind, Supabase, Stripe, and an Expo member app.
+Multi-tenant gym and studio operating system built with Next.js, TypeScript, Supabase, Stripe, and an Expo member app.
+
+Compound OS is a product experiment around one question:
+
+`What would gym software look like if it understood operations, member experience, retention, culture, payments, and staff workflows in one place?`
+
+## Why I Am Building This
+
+I have spent time around gyms, operators, service businesses, and people trying to manage real-world customer relationships with scattered tools.
+
+Most gym software solves pieces of the problem:
+
+- admin records
+- billing
+- check-ins
+- scheduling
+- member communication
+
+Compound OS is being built as a more complete operating layer for gyms and studios: owner dashboard, staff workflows, member app, retention signals, culture features, and AI-assisted operations.
+
+This is also one of my main portfolio projects as I move toward full-stack and startup roles.
+
+## Current Status
+
+This is an early-stage build. The current priority is proving product direction and workflow structure.
+
+Current focus:
+
+- owner dashboard
+- member management
+- check-ins
+- retention signals
+- revenue and billing workflows
+- AI command center
+- member mobile app
+- Supabase schema and migrations
+- production hardening docs
+
+The UI is still in testing and will receive a full polish pass after the core workflows are stable.
+
+## Screenshots
+
+![Compound OS landing](docs/assets/compound-os-home.png)
+
+![Compound OS owner access](docs/assets/compound-os-owner-access.png)
 
 ## Stack
 
-- Web app: Next.js App Router + TypeScript + Tailwind CSS
-- Backend/data: Supabase Auth + Postgres + RLS
-- Mobile app: Expo + React Native + TypeScript
-- Billing: Stripe Connect + Stripe Checkout + webhooks
+- Web app: Next.js App Router, React, TypeScript, Tailwind CSS
+- Backend/data: Supabase Auth, Postgres, Row Level Security
+- Mobile app: Expo, React Native, TypeScript
+- Payments: Stripe Connect, Stripe Checkout, webhooks
+- AI: OpenAI-powered or rule-based operational insights
 
-## Workspaces
+## What Is Implemented Or In Progress
 
-- Web app: `./`
-- Member app: `./member-app`
-- SQL migrations: `./supabase/migrations`
+- Next.js owner web app
+- protected owner dashboard routes
+- Supabase auth direction
+- member management workflows
+- check-in workflows
+- revenue and billing direction
+- retention and follow-up concepts
+- AI command center direction
+- Expo member app workspace
+- Supabase migrations
+- production hardening documentation
+- deployment and observability planning
 
-## Required Environment Variables
+## Product Areas
 
-### Web app (`.env.local`)
+### Owner Dashboard
 
-```bash
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-OPENAI_API_KEY=
-EXPO_PUSH_ACCESS_TOKEN=
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-```
+The owner dashboard is designed to give gym operators a command center for member health, check-ins, billing, culture, and operational tasks.
 
-### Member app (`member-app/.env`)
+### Member App
 
-```bash
-EXPO_PUBLIC_SUPABASE_URL=
-EXPO_PUBLIC_SUPABASE_ANON_KEY=
-EXPO_PUBLIC_API_URL=http://localhost:3000
-EXPO_PUBLIC_EXPO_PROJECT_ID=
-```
+The member app is designed to feel like a premium gym companion, not just a watered-down billing portal.
 
-## Setup Guide
+Planned/active directions:
 
-1. Install dependencies.
+- QR check-in
+- profile
+- workouts
+- coaching
+- community
+- gym news
+- wallet/payment direction
+
+### AI Command Center
+
+The AI layer is meant to support staff and owners with practical next actions.
+
+Examples:
+
+- identify members at risk of churn
+- suggest follow-up tasks
+- summarize operational issues
+- surface billing or attendance anomalies
+
+## Technical Direction
+
+Compound OS is being built as a real SaaS-style product, not a static demo.
+
+Key technical concerns:
+
+- multi-tenant data boundaries
+- auth and permissions
+- row-level security
+- payment lifecycle reliability
+- operational auditability
+- mobile and web coordination
+- stable deployment process
+
+## Docs
+
+- [Product roadmap](docs/product-roadmap.md)
+- [Information architecture](docs/information-architecture.md)
+- [Production hardening](docs/production-hardening.md)
+- [Observability and alerting](docs/observability-and-alerting.md)
+- [Backup and recovery playbook](docs/backup-and-recovery-playbook.md)
+- [Deployment runbook](docs/deployment-runbook.md)
+- [Payment chaos testing](docs/payment-chaos-testing.md)
+- [Native mobile release runbook](docs/native-mobile-release-runbook.md)
+
+## Run Locally
 
 ```bash
 npm install
+npm run dev
 ```
+
+Open:
+
+```text
+http://localhost:3000
+```
+
+For the member app:
 
 ```bash
 cd member-app
 npm install
-```
-
-2. Create the web and mobile env files from the examples.
-
-3. Create a Supabase project.
-
-4. Run the SQL migrations in order.
-
-## Migration Order
-
-Apply these in filename order:
-
-1. `202605120001_create_profiles.sql`
-2. `202605120002_create_gyms_and_gym_users.sql`
-3. `202605120003_create_members.sql`
-4. `202605120004_create_check_ins.sql`
-5. `202605120005_create_member_scores_and_ai_insights.sql`
-6. `202605120006_create_revenue_engine.sql`
-7. `202605120007_create_automations.sql`
-8. `202605120008_enable_member_mobile_access.sql`
-9. `202605120009_add_qr_check_in_method.sql`
-10. `202605120010_link_members_to_auth_users.sql`
-11. `202605120011_create_workouts.sql`
-12. `202605120012_create_notifications.sql`
-13. `202605120013_create_community_system.sql`
-14. `202605120014_enhance_community_engagement.sql`
-15. `202605120015_add_stripe_billing.sql`
-16. `202605120016_hardening_and_idempotency.sql`
-
-## Local Development
-
-### Web app
-
-```bash
-npm run dev
-```
-
-Open `http://localhost:3000`.
-
-### Member app
-
-```bash
-cd member-app
 npm run start
 ```
 
-Use Expo Go or a simulator.
+## Environment Variables
 
-## Stripe Local Setup
+Create `.env.local` from `.env.example`.
 
-1. Create a Stripe account.
-2. Add `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`.
-3. Set `NEXT_PUBLIC_APP_URL` to your local web app URL.
-4. Forward Stripe webhooks to:
+Required areas:
 
-```bash
-/api/stripe/webhooks
-```
+- Supabase URL and anon key
+- Supabase service role key
+- Stripe keys
+- OpenAI key, optional for AI workflows
+- public app URL
 
-Recommended Stripe events:
+Do not commit real secrets.
 
-- `customer.subscription.created`
-- `customer.subscription.updated`
-- `invoice.paid`
-- `invoice.payment_failed`
+## What This Project Shows
 
-## Beta Checklist
+- full-stack product thinking
+- SaaS architecture
+- database and auth direction
+- payment workflow awareness
+- mobile app direction
+- operator empathy
+- technical documentation
+- ability to turn real-world operations into software
 
-- Supabase env vars are present for web and mobile.
-- Service role key is configured for webhooks/admin sync paths.
-- All migrations are applied in order.
-- At least one gym owner account can sign up, onboard, and reach `/dashboard`.
-- Stripe Connect onboarding completes for a gym.
-- A member can complete Stripe Checkout for a plan.
-- Stripe webhooks reach the local server and mark events processed.
-- A failed payment creates:
-  - a `payments` row with `failed`
-  - a `subscriptions` row/status sync
-  - a `failed_payment` AI insight
-  - a billing notification record
-- Expo push registration works on a physical device.
-- Member app can log in and load member context by `user_id`.
+## Next Steps
 
-## Stability Notes
-
-- Dashboard routes are protected in both middleware and server layout.
-- Stripe webhooks are idempotent through `stripe_webhook_events`.
-- Duplicate live subscriptions are blocked with a partial unique index.
-- Duplicate Stripe invoice/payment-intent records are protected with unique indexes.
-- Community, workout, notification, and billing flows are gym-scoped by design.
-
-## Useful Commands
-
-### Web
-
-```bash
-npm run dev
-npm run lint
-npm run typecheck
-```
-
-### Mobile
-
-```bash
-cd member-app
-npm run start
-npm run typecheck
-```
-
-## Known Assumptions
-
-- Stripe billing is USD-only in this version.
-- Stripe Checkout is started from the dashboard for a selected member and plan.
-- Webhook sync is required for Stripe subscription/payment truth to land in Supabase.
-- Expo push delivery requires valid Expo/FCM project configuration outside this repo.
+- finish public demo path
+- add more polished screenshots
+- deploy demo environment
+- tighten README with live URLs
+- record short walkthrough video
+- continue member app workflow polish
+- add more testable workflow proof
