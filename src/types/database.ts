@@ -15,6 +15,202 @@ export interface Database {
         Update: GymUpdate;
         Relationships: [];
       };
+      gym_challenges: {
+        Row: GymChallenge;
+        Insert: GymChallengeInsert;
+        Update: GymChallengeUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "gym_challenges_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: false;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      gym_announcements: {
+        Row: GymAnnouncement;
+        Insert: GymAnnouncementInsert;
+        Update: GymAnnouncementUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "gym_announcements_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: false;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      gym_member_spotlights: {
+        Row: GymMemberSpotlight;
+        Insert: GymMemberSpotlightInsert;
+        Update: GymMemberSpotlightUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "gym_member_spotlights_created_by_user_id_fkey";
+            columns: ["created_by_user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "gym_member_spotlights_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: false;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "gym_member_spotlights_member_id_fkey";
+            columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      gym_shoutouts: {
+        Row: GymShoutout;
+        Insert: GymShoutoutInsert;
+        Update: GymShoutoutUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "gym_shoutouts_created_by_user_id_fkey";
+            columns: ["created_by_user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "gym_shoutouts_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: false;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "gym_shoutouts_member_id_fkey";
+            columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      fridge_products: {
+        Row: FridgeProduct;
+        Insert: FridgeProductInsert;
+        Update: FridgeProductUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "fridge_products_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: false;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      fridge_unlock_sessions: {
+        Row: FridgeUnlockSession;
+        Insert: FridgeUnlockSessionInsert;
+        Update: FridgeUnlockSessionUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "fridge_unlock_sessions_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: false;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fridge_unlock_sessions_member_id_fkey";
+            columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      fridge_access_events: {
+        Row: FridgeAccessEvent;
+        Insert: FridgeAccessEventInsert;
+        Update: FridgeAccessEventUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "fridge_access_events_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: false;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fridge_access_events_member_id_fkey";
+            columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fridge_access_events_fridge_unlock_session_id_fkey";
+            columns: ["fridge_unlock_session_id"];
+            isOneToOne: false;
+            referencedRelation: "fridge_unlock_sessions";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      fridge_orders: {
+        Row: FridgeOrder;
+        Insert: FridgeOrderInsert;
+        Update: FridgeOrderUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "fridge_orders_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: false;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fridge_orders_member_id_fkey";
+            columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fridge_orders_fridge_unlock_session_id_fkey";
+            columns: ["fridge_unlock_session_id"];
+            isOneToOne: true;
+            referencedRelation: "fridge_unlock_sessions";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      fridge_order_items: {
+        Row: FridgeOrderItem;
+        Insert: FridgeOrderItemInsert;
+        Update: FridgeOrderItemUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "fridge_order_items_fridge_order_id_fkey";
+            columns: ["fridge_order_id"];
+            isOneToOne: false;
+            referencedRelation: "fridge_orders";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fridge_order_items_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "fridge_products";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       gym_users: {
         Row: GymUser;
         Insert: GymUserInsert;
@@ -45,6 +241,104 @@ export interface Database {
             columns: ["gym_id"];
             isOneToOne: false;
             referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      member_membership_events: {
+        Row: MemberMembershipEvent;
+        Insert: MemberMembershipEventInsert;
+        Update: MemberMembershipEventUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "member_membership_events_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: false;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "member_membership_events_member_id_fkey";
+            columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      member_freeze_reminders: {
+        Row: MemberFreezeReminder;
+        Insert: MemberFreezeReminderInsert;
+        Update: MemberFreezeReminderUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "member_freeze_reminders_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: false;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "member_freeze_reminders_member_id_fkey";
+            columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      member_follow_up_tasks: {
+        Row: MemberFollowUpTask;
+        Insert: MemberFollowUpTaskInsert;
+        Update: MemberFollowUpTaskUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "member_follow_up_tasks_author_user_id_fkey";
+            columns: ["author_user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "member_follow_up_tasks_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: false;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "member_follow_up_tasks_member_id_fkey";
+            columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      member_notes: {
+        Row: MemberNote;
+        Insert: MemberNoteInsert;
+        Update: MemberNoteUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "member_notes_author_user_id_fkey";
+            columns: ["author_user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "member_notes_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: false;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "member_notes_member_id_fkey";
+            columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
             referencedColumns: ["id"];
           }
         ];
@@ -399,6 +693,104 @@ export interface Database {
           }
         ];
       };
+      billing_retry_policies: {
+        Row: BillingRetryPolicy;
+        Insert: BillingRetryPolicyInsert;
+        Update: BillingRetryPolicyUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "billing_retry_policies_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: true;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      billing_recovery_cases: {
+        Row: BillingRecoveryCase;
+        Insert: BillingRecoveryCaseInsert;
+        Update: BillingRecoveryCaseUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "billing_recovery_cases_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: false;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "billing_recovery_cases_member_id_fkey";
+            columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "billing_recovery_cases_subscription_id_fkey";
+            columns: ["subscription_id"];
+            isOneToOne: false;
+            referencedRelation: "subscriptions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "billing_recovery_cases_payment_id_fkey";
+            columns: ["payment_id"];
+            isOneToOne: false;
+            referencedRelation: "payments";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      billing_recovery_attempts: {
+        Row: BillingRecoveryAttempt;
+        Insert: BillingRecoveryAttemptInsert;
+        Update: BillingRecoveryAttemptUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "billing_recovery_attempts_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: false;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "billing_recovery_attempts_case_id_fkey";
+            columns: ["case_id"];
+            isOneToOne: false;
+            referencedRelation: "billing_recovery_cases";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "billing_recovery_attempts_payment_id_fkey";
+            columns: ["payment_id"];
+            isOneToOne: false;
+            referencedRelation: "payments";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "billing_recovery_attempts_member_id_fkey";
+            columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      billing_daily_reports: {
+        Row: BillingDailyReport;
+        Insert: BillingDailyReportInsert;
+        Update: BillingDailyReportUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "billing_daily_reports_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: false;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       stripe_webhook_events: {
         Row: StripeWebhookEvent;
         Insert: StripeWebhookEventInsert;
@@ -419,6 +811,76 @@ export interface Database {
           },
           {
             foreignKeyName: "check_ins_member_id_fkey";
+            columns: ["member_id"];
+            isOneToOne: false;
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "check_ins_schedule_session_id_fkey";
+            columns: ["schedule_session_id"];
+            isOneToOne: false;
+            referencedRelation: "schedule_sessions";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      schedule_programs: {
+        Row: ScheduleProgram;
+        Insert: ScheduleProgramInsert;
+        Update: ScheduleProgramUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "schedule_programs_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: false;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      schedule_sessions: {
+        Row: ScheduleSession;
+        Insert: ScheduleSessionInsert;
+        Update: ScheduleSessionUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "schedule_sessions_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: false;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "schedule_sessions_program_id_fkey";
+            columns: ["program_id"];
+            isOneToOne: false;
+            referencedRelation: "schedule_programs";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      schedule_bookings: {
+        Row: ScheduleBooking;
+        Insert: ScheduleBookingInsert;
+        Update: ScheduleBookingUpdate;
+        Relationships: [
+          {
+            foreignKeyName: "schedule_bookings_gym_id_fkey";
+            columns: ["gym_id"];
+            isOneToOne: false;
+            referencedRelation: "gyms";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "schedule_bookings_session_id_fkey";
+            columns: ["session_id"];
+            isOneToOne: false;
+            referencedRelation: "schedule_sessions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "schedule_bookings_member_id_fkey";
             columns: ["member_id"];
             isOneToOne: false;
             referencedRelation: "members";
@@ -485,6 +947,52 @@ export interface Database {
           workout_sets_payload: Json;
         };
         Returns: string;
+      };
+      create_member_fridge_unlock_session: {
+        Args: {
+          selected_items_payload: Json;
+          expires_in_seconds?: number;
+        };
+        Returns: {
+          id: string;
+          gym_id: string;
+          member_id: string;
+          selected_items: Json;
+          estimated_total_cents: number;
+          status: string;
+          qr_token: string;
+          expires_at: string;
+          created_at: string;
+        }[];
+      };
+      create_schedule_booking_for_member: {
+        Args: {
+          target_session_id: string;
+          target_member_id: string;
+          booking_source?: string;
+        };
+        Returns: ScheduleBooking;
+      };
+      cancel_schedule_booking_for_member: {
+        Args: {
+          target_booking_id: string;
+          target_member_id: string;
+        };
+        Returns: ScheduleBooking;
+      };
+      get_member_billing_summary: {
+        Args: Record<string, never>;
+        Returns: {
+          membership_status: string;
+          billing_cycle: string | null;
+          membership_plan_name: string | null;
+          current_period_start: string | null;
+          current_period_end: string | null;
+          has_card_on_file: boolean;
+          card_brand: string | null;
+          card_last4: string | null;
+          frozen_until: string | null;
+        }[];
       };
       register_member_push_token: {
         Args: {
@@ -563,6 +1071,9 @@ export interface Gym {
   slug: string;
   owner_user_id: string | null;
   timezone: string;
+  default_waiver_title: string | null;
+  default_waiver_body: string | null;
+  require_waiver_on_signup: boolean;
   stripe_connected_account_id: string | null;
   stripe_onboarding_completed: boolean;
   stripe_charges_enabled: boolean;
@@ -578,6 +1089,9 @@ export interface GymInsert {
   slug: string;
   owner_user_id?: string | null;
   timezone?: string;
+  default_waiver_title?: string | null;
+  default_waiver_body?: string | null;
+  require_waiver_on_signup?: boolean;
   stripe_connected_account_id?: string | null;
   stripe_onboarding_completed?: boolean;
   stripe_charges_enabled?: boolean;
@@ -593,6 +1107,9 @@ export interface GymUpdate {
   slug?: string;
   owner_user_id?: string | null;
   timezone?: string;
+  default_waiver_title?: string | null;
+  default_waiver_body?: string | null;
+  require_waiver_on_signup?: boolean;
   stripe_connected_account_id?: string | null;
   stripe_onboarding_completed?: boolean;
   stripe_charges_enabled?: boolean;
@@ -600,6 +1117,336 @@ export interface GymUpdate {
   stripe_details_submitted?: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface GymChallenge {
+  id: string;
+  gym_id: string;
+  title: string;
+  description: string | null;
+  metric_type: "steps" | "visits" | "workouts";
+  goal_value: number;
+  period: "weekly" | "monthly";
+  starts_on: string;
+  ends_on: string;
+  status: "active" | "archived";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GymChallengeInsert {
+  id?: string;
+  gym_id: string;
+  title: string;
+  description?: string | null;
+  metric_type: "steps" | "visits" | "workouts";
+  goal_value: number;
+  period: "weekly" | "monthly";
+  starts_on: string;
+  ends_on: string;
+  status?: "active" | "archived";
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface GymChallengeUpdate {
+  id?: string;
+  gym_id?: string;
+  title?: string;
+  description?: string | null;
+  metric_type?: "steps" | "visits" | "workouts";
+  goal_value?: number;
+  period?: "weekly" | "monthly";
+  starts_on?: string;
+  ends_on?: string;
+  status?: "active" | "archived";
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface GymAnnouncement {
+  id: string;
+  gym_id: string;
+  title: string;
+  body: string;
+  is_pinned: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GymAnnouncementInsert {
+  id?: string;
+  gym_id: string;
+  title: string;
+  body: string;
+  is_pinned?: boolean;
+  is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface GymAnnouncementUpdate {
+  id?: string;
+  gym_id?: string;
+  title?: string;
+  body?: string;
+  is_pinned?: boolean;
+  is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface FridgeProduct {
+  id: string;
+  gym_id: string;
+  category: "drinks_fridge" | "meal_prep_fridge" | "protein_candy" | "tclc_merch";
+  name: string;
+  description: string | null;
+  price_cents: number;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FridgeProductInsert {
+  id?: string;
+  gym_id: string;
+  category?: "drinks_fridge" | "meal_prep_fridge" | "protein_candy" | "tclc_merch";
+  name: string;
+  description?: string | null;
+  price_cents: number;
+  is_active?: boolean;
+  sort_order?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface FridgeProductUpdate {
+  id?: string;
+  gym_id?: string;
+  category?: "drinks_fridge" | "meal_prep_fridge" | "protein_candy" | "tclc_merch";
+  name?: string;
+  description?: string | null;
+  price_cents?: number;
+  is_active?: boolean;
+  sort_order?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface FridgeUnlockSession {
+  id: string;
+  gym_id: string;
+  member_id: string;
+  selected_items: Json;
+  estimated_total_cents: number;
+  status: "pending" | "unlocked" | "confirmed" | "expired" | "canceled";
+  qr_token: string;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface FridgeUnlockSessionInsert {
+  id?: string;
+  gym_id: string;
+  member_id: string;
+  selected_items?: Json;
+  estimated_total_cents: number;
+  status?: "pending" | "unlocked" | "confirmed" | "expired" | "canceled";
+  qr_token: string;
+  expires_at: string;
+  created_at?: string;
+}
+
+export interface GymMemberSpotlight {
+  id: string;
+  gym_id: string;
+  member_id: string;
+  title: string;
+  body: string;
+  image_url: string | null;
+  status: "active" | "archived";
+  created_by_user_id: string | null;
+  created_at: string;
+}
+
+export interface GymMemberSpotlightInsert {
+  id?: string;
+  gym_id: string;
+  member_id: string;
+  title: string;
+  body: string;
+  image_url?: string | null;
+  status?: "active" | "archived";
+  created_by_user_id?: string | null;
+  created_at?: string;
+}
+
+export interface GymMemberSpotlightUpdate {
+  id?: string;
+  gym_id?: string;
+  member_id?: string;
+  title?: string;
+  body?: string;
+  image_url?: string | null;
+  status?: "active" | "archived";
+  created_by_user_id?: string | null;
+  created_at?: string;
+}
+
+export interface GymShoutout {
+  id: string;
+  gym_id: string;
+  member_id: string | null;
+  title: string;
+  body: string;
+  created_by_user_id: string | null;
+  is_pinned: boolean;
+  expires_at: string | null;
+  created_at: string;
+}
+
+export interface GymShoutoutInsert {
+  id?: string;
+  gym_id: string;
+  member_id?: string | null;
+  title: string;
+  body: string;
+  created_by_user_id?: string | null;
+  is_pinned?: boolean;
+  expires_at?: string | null;
+  created_at?: string;
+}
+
+export interface GymShoutoutUpdate {
+  id?: string;
+  gym_id?: string;
+  member_id?: string | null;
+  title?: string;
+  body?: string;
+  created_by_user_id?: string | null;
+  is_pinned?: boolean;
+  expires_at?: string | null;
+  created_at?: string;
+}
+
+export interface FridgeUnlockSessionUpdate {
+  id?: string;
+  gym_id?: string;
+  member_id?: string;
+  selected_items?: Json;
+  estimated_total_cents?: number;
+  status?: "pending" | "unlocked" | "confirmed" | "expired" | "canceled";
+  qr_token?: string;
+  expires_at?: string;
+  created_at?: string;
+}
+
+export interface FridgeAccessEvent {
+  id: string;
+  gym_id: string;
+  member_id: string;
+  fridge_unlock_session_id: string;
+  fridge_label: string;
+  selected_items: Json;
+  estimated_total_cents: number;
+  status: "pending" | "unlocked" | "confirmed" | "expired" | "canceled";
+  created_at: string;
+}
+
+export interface FridgeAccessEventInsert {
+  id?: string;
+  gym_id: string;
+  member_id: string;
+  fridge_unlock_session_id: string;
+  fridge_label?: string;
+  selected_items?: Json;
+  estimated_total_cents: number;
+  status: "pending" | "unlocked" | "confirmed" | "expired" | "canceled";
+  created_at?: string;
+}
+
+export interface FridgeAccessEventUpdate {
+  id?: string;
+  gym_id?: string;
+  member_id?: string;
+  fridge_unlock_session_id?: string;
+  fridge_label?: string;
+  selected_items?: Json;
+  estimated_total_cents?: number;
+  status?: "pending" | "unlocked" | "confirmed" | "expired" | "canceled";
+  created_at?: string;
+}
+
+export interface FridgeOrder {
+  id: string;
+  gym_id: string;
+  member_id: string;
+  fridge_unlock_session_id: string;
+  subtotal_cents: number;
+  status: "pending" | "paid" | "failed" | "canceled";
+  stripe_payment_intent_id: string | null;
+  receipt: Json;
+  created_at: string;
+}
+
+export interface FridgeOrderInsert {
+  id?: string;
+  gym_id: string;
+  member_id: string;
+  fridge_unlock_session_id: string;
+  subtotal_cents: number;
+  status?: "pending" | "paid" | "failed" | "canceled";
+  stripe_payment_intent_id?: string | null;
+  receipt?: Json;
+  created_at?: string;
+}
+
+export interface FridgeOrderUpdate {
+  id?: string;
+  gym_id?: string;
+  member_id?: string;
+  fridge_unlock_session_id?: string;
+  subtotal_cents?: number;
+  status?: "pending" | "paid" | "failed" | "canceled";
+  stripe_payment_intent_id?: string | null;
+  receipt?: Json;
+  created_at?: string;
+}
+
+export interface FridgeOrderItem {
+  id: string;
+  fridge_order_id: string;
+  product_id: string | null;
+  product_name: string;
+  quantity: number;
+  unit_price_cents: number;
+  total_price_cents: number;
+  created_at: string;
+}
+
+export interface FridgeOrderItemInsert {
+  id?: string;
+  fridge_order_id: string;
+  product_id?: string | null;
+  product_name: string;
+  quantity: number;
+  unit_price_cents: number;
+  total_price_cents: number;
+  created_at?: string;
+}
+
+export interface FridgeOrderItemUpdate {
+  id?: string;
+  fridge_order_id?: string;
+  product_id?: string | null;
+  product_name?: string;
+  quantity?: number;
+  unit_price_cents?: number;
+  total_price_cents?: number;
+  created_at?: string;
 }
 
 export interface GymUser {
@@ -640,8 +1487,26 @@ export interface Member {
   last_name: string;
   email: string | null;
   phone: string | null;
+  date_of_birth: string | null;
+  address_line_1: string | null;
+  address_line_2: string | null;
+  city: string | null;
+  state_region: string | null;
+  postal_code: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
+  emergency_contact_relationship: string | null;
+  medical_notes: string | null;
+  waiver_required: boolean;
+  waiver_title: string | null;
+  waiver_body: string | null;
+  waiver_signature_name: string | null;
+  waiver_signed_at: string | null;
   stripe_customer_id: string | null;
+  stripe_default_payment_method_id: string | null;
   status: "active" | "frozen" | "canceled" | "lead";
+  frozen_until: string | null;
+  canceled_at: string | null;
   joined_at: string | null;
   created_at: string;
   updated_at: string;
@@ -655,8 +1520,26 @@ export interface MemberInsert {
   last_name: string;
   email?: string | null;
   phone?: string | null;
+  date_of_birth?: string | null;
+  address_line_1?: string | null;
+  address_line_2?: string | null;
+  city?: string | null;
+  state_region?: string | null;
+  postal_code?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  emergency_contact_relationship?: string | null;
+  medical_notes?: string | null;
+  waiver_required?: boolean;
+  waiver_title?: string | null;
+  waiver_body?: string | null;
+  waiver_signature_name?: string | null;
+  waiver_signed_at?: string | null;
   stripe_customer_id?: string | null;
+  stripe_default_payment_method_id?: string | null;
   status?: "active" | "frozen" | "canceled" | "lead";
+  frozen_until?: string | null;
+  canceled_at?: string | null;
   joined_at?: string | null;
   created_at?: string;
   updated_at?: string;
@@ -670,9 +1553,165 @@ export interface MemberUpdate {
   last_name?: string;
   email?: string | null;
   phone?: string | null;
+  date_of_birth?: string | null;
+  address_line_1?: string | null;
+  address_line_2?: string | null;
+  city?: string | null;
+  state_region?: string | null;
+  postal_code?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  emergency_contact_relationship?: string | null;
+  medical_notes?: string | null;
+  waiver_required?: boolean;
+  waiver_title?: string | null;
+  waiver_body?: string | null;
+  waiver_signature_name?: string | null;
+  waiver_signed_at?: string | null;
   stripe_customer_id?: string | null;
+  stripe_default_payment_method_id?: string | null;
   status?: "active" | "frozen" | "canceled" | "lead";
+  frozen_until?: string | null;
+  canceled_at?: string | null;
   joined_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface MemberMembershipEvent {
+  id: string;
+  gym_id: string;
+  member_id: string;
+  event_type: "frozen" | "canceled";
+  reason: string | null;
+  frozen_until: string | null;
+  created_at: string;
+}
+
+export interface MemberMembershipEventInsert {
+  id?: string;
+  gym_id: string;
+  member_id: string;
+  event_type: "frozen" | "canceled";
+  reason?: string | null;
+  frozen_until?: string | null;
+  created_at?: string;
+}
+
+export interface MemberMembershipEventUpdate {
+  id?: string;
+  gym_id?: string;
+  member_id?: string;
+  event_type?: "frozen" | "canceled";
+  reason?: string | null;
+  frozen_until?: string | null;
+  created_at?: string;
+}
+
+export interface MemberFreezeReminder {
+  id: string;
+  gym_id: string;
+  member_id: string;
+  reminder_type: "one_week" | "two_days";
+  frozen_until: string;
+  created_at: string;
+}
+
+export interface MemberFreezeReminderInsert {
+  id?: string;
+  gym_id: string;
+  member_id: string;
+  reminder_type: "one_week" | "two_days";
+  frozen_until: string;
+  created_at?: string;
+}
+
+export interface MemberFreezeReminderUpdate {
+  id?: string;
+  gym_id?: string;
+  member_id?: string;
+  reminder_type?: "one_week" | "two_days";
+  frozen_until?: string;
+  created_at?: string;
+}
+
+export interface MemberNote {
+  id: string;
+  gym_id: string;
+  member_id: string;
+  author_user_id: string | null;
+  body: string;
+  is_archived: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MemberNoteInsert {
+  id?: string;
+  gym_id: string;
+  member_id: string;
+  author_user_id?: string | null;
+  body: string;
+  is_archived?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface MemberNoteUpdate {
+  id?: string;
+  gym_id?: string;
+  member_id?: string;
+  author_user_id?: string | null;
+  body?: string;
+  is_archived?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface MemberFollowUpTask {
+  id: string;
+  gym_id: string;
+  member_id: string;
+  author_user_id: string | null;
+  title: string;
+  details: string | null;
+  task_type: "general" | "billing" | "retention" | "front_desk";
+  priority: "low" | "medium" | "high";
+  status: "open" | "completed";
+  due_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MemberFollowUpTaskInsert {
+  id?: string;
+  gym_id: string;
+  member_id: string;
+  author_user_id?: string | null;
+  title: string;
+  details?: string | null;
+  task_type?: "general" | "billing" | "retention" | "front_desk";
+  priority?: "low" | "medium" | "high";
+  status?: "open" | "completed";
+  due_at?: string | null;
+  completed_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface MemberFollowUpTaskUpdate {
+  id?: string;
+  gym_id?: string;
+  member_id?: string;
+  author_user_id?: string | null;
+  title?: string;
+  details?: string | null;
+  task_type?: "general" | "billing" | "retention" | "front_desk";
+  priority?: "low" | "medium" | "high";
+  status?: "open" | "completed";
+  due_at?: string | null;
+  completed_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -681,6 +1720,7 @@ export interface CheckIn {
   id: string;
   gym_id: string;
   member_id: string;
+  schedule_session_id: string | null;
   check_in_method: "manual" | "qr";
   created_at: string;
 }
@@ -689,6 +1729,7 @@ export interface CheckInInsert {
   id?: string;
   gym_id: string;
   member_id: string;
+  schedule_session_id?: string | null;
   check_in_method?: "manual" | "qr";
   created_at?: string;
 }
@@ -697,8 +1738,186 @@ export interface CheckInUpdate {
   id?: string;
   gym_id?: string;
   member_id?: string;
+  schedule_session_id?: string | null;
   check_in_method?: "manual" | "qr";
   created_at?: string;
+}
+
+export type ScheduleSessionVisibility =
+  | "member_portal"
+  | "website"
+  | "public"
+  | "staff_only";
+
+export type ScheduleSessionStatus = "active" | "canceled";
+
+export type ScheduleBookingStatus =
+  | "booked"
+  | "waitlisted"
+  | "canceled"
+  | "checked_in"
+  | "no_show";
+
+export type ScheduleBookingSource =
+  | "dashboard"
+  | "member_app"
+  | "website"
+  | "public_widget";
+
+export interface ScheduleProgram {
+  id: string;
+  gym_id: string;
+  name: string;
+  description: string | null;
+  color: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScheduleProgramInsert {
+  id?: string;
+  gym_id: string;
+  name: string;
+  description?: string | null;
+  color?: string;
+  is_active?: boolean;
+  sort_order?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ScheduleProgramUpdate {
+  id?: string;
+  gym_id?: string;
+  name?: string;
+  description?: string | null;
+  color?: string;
+  is_active?: boolean;
+  sort_order?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ScheduleSession {
+  id: string;
+  gym_id: string;
+  program_id: string | null;
+  title: string;
+  description: string | null;
+  instructor_name: string | null;
+  location: string | null;
+  starts_at: string;
+  ends_at: string;
+  timezone: string;
+  capacity: number | null;
+  booking_enabled: boolean;
+  waitlist_enabled: boolean;
+  visibility: ScheduleSessionVisibility;
+  cost_cents: number;
+  status: ScheduleSessionStatus;
+  cancellation_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScheduleSessionInsert {
+  id?: string;
+  gym_id: string;
+  program_id?: string | null;
+  title: string;
+  description?: string | null;
+  instructor_name?: string | null;
+  location?: string | null;
+  starts_at: string;
+  ends_at: string;
+  timezone?: string;
+  capacity?: number | null;
+  booking_enabled?: boolean;
+  waitlist_enabled?: boolean;
+  visibility?: ScheduleSessionVisibility;
+  cost_cents?: number;
+  status?: ScheduleSessionStatus;
+  cancellation_reason?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ScheduleSessionUpdate {
+  id?: string;
+  gym_id?: string;
+  program_id?: string | null;
+  title?: string;
+  description?: string | null;
+  instructor_name?: string | null;
+  location?: string | null;
+  starts_at?: string;
+  ends_at?: string;
+  timezone?: string;
+  capacity?: number | null;
+  booking_enabled?: boolean;
+  waitlist_enabled?: boolean;
+  visibility?: ScheduleSessionVisibility;
+  cost_cents?: number;
+  status?: ScheduleSessionStatus;
+  cancellation_reason?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ScheduleBooking {
+  id: string;
+  gym_id: string;
+  session_id: string;
+  member_id: string | null;
+  guest_name: string | null;
+  guest_email: string | null;
+  guest_phone: string | null;
+  status: ScheduleBookingStatus;
+  source: ScheduleBookingSource;
+  notes: string | null;
+  booked_at: string;
+  canceled_at: string | null;
+  checked_in_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScheduleBookingInsert {
+  id?: string;
+  gym_id: string;
+  session_id: string;
+  member_id?: string | null;
+  guest_name?: string | null;
+  guest_email?: string | null;
+  guest_phone?: string | null;
+  status?: ScheduleBookingStatus;
+  source?: ScheduleBookingSource;
+  notes?: string | null;
+  booked_at?: string;
+  canceled_at?: string | null;
+  checked_in_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ScheduleBookingUpdate {
+  id?: string;
+  gym_id?: string;
+  session_id?: string;
+  member_id?: string | null;
+  guest_name?: string | null;
+  guest_email?: string | null;
+  guest_phone?: string | null;
+  status?: ScheduleBookingStatus;
+  source?: ScheduleBookingSource;
+  notes?: string | null;
+  booked_at?: string;
+  canceled_at?: string | null;
+  checked_in_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Workout {
@@ -1136,6 +2355,7 @@ export interface Notification {
   type: "retention" | "workout" | "billing" | "general";
   status: "pending" | "sent" | "failed";
   created_at: string;
+  read_at: string | null;
 }
 
 export interface NotificationInsert {
@@ -1147,6 +2367,7 @@ export interface NotificationInsert {
   type: "retention" | "workout" | "billing" | "general";
   status?: "pending" | "sent" | "failed";
   created_at?: string;
+  read_at?: string | null;
 }
 
 export interface NotificationUpdate {
@@ -1158,6 +2379,7 @@ export interface NotificationUpdate {
   type?: "retention" | "workout" | "billing" | "general";
   status?: "pending" | "sent" | "failed";
   created_at?: string;
+  read_at?: string | null;
 }
 
 export interface MembershipPlan {
@@ -1250,10 +2472,24 @@ export interface Payment {
   member_id: string | null;
   subscription_id: string | null;
   amount_cents: number;
-  status: "succeeded" | "failed" | "pending";
+  status: "succeeded" | "failed" | "pending" | "scheduled" | "overdue" | "refunded";
   paid_at: string | null;
+  due_at: string | null;
+  invoice_number: string | null;
+  description: string | null;
+  payment_type: "membership" | "drop_in" | "pos" | "class_fee" | "manual" | "refund_adjustment";
+  accounting_category: string;
+  late_fee_cents: number;
+  tax_cents: number;
+  discount_cents: number;
+  manual_payment_note: string | null;
+  payment_method_label: string | null;
+  refunded_amount_cents: number;
+  refunded_at: string | null;
+  refund_reason: string | null;
   stripe_payment_intent_id: string | null;
   stripe_invoice_id: string | null;
+  stripe_refund_id: string | null;
   created_at: string;
 }
 
@@ -1263,10 +2499,24 @@ export interface PaymentInsert {
   member_id?: string | null;
   subscription_id?: string | null;
   amount_cents: number;
-  status?: "succeeded" | "failed" | "pending";
+  status?: "succeeded" | "failed" | "pending" | "scheduled" | "overdue" | "refunded";
   paid_at?: string | null;
+  due_at?: string | null;
+  invoice_number?: string | null;
+  description?: string | null;
+  payment_type?: "membership" | "drop_in" | "pos" | "class_fee" | "manual" | "refund_adjustment";
+  accounting_category?: string;
+  late_fee_cents?: number;
+  tax_cents?: number;
+  discount_cents?: number;
+  manual_payment_note?: string | null;
+  payment_method_label?: string | null;
+  refunded_amount_cents?: number;
+  refunded_at?: string | null;
+  refund_reason?: string | null;
   stripe_payment_intent_id?: string | null;
   stripe_invoice_id?: string | null;
+  stripe_refund_id?: string | null;
   created_at?: string;
 }
 
@@ -1276,10 +2526,252 @@ export interface PaymentUpdate {
   member_id?: string | null;
   subscription_id?: string | null;
   amount_cents?: number;
-  status?: "succeeded" | "failed" | "pending";
+  status?: "succeeded" | "failed" | "pending" | "scheduled" | "overdue" | "refunded";
   paid_at?: string | null;
+  due_at?: string | null;
+  invoice_number?: string | null;
+  description?: string | null;
+  payment_type?: "membership" | "drop_in" | "pos" | "class_fee" | "manual" | "refund_adjustment";
+  accounting_category?: string;
+  late_fee_cents?: number;
+  tax_cents?: number;
+  discount_cents?: number;
+  manual_payment_note?: string | null;
+  payment_method_label?: string | null;
+  refunded_amount_cents?: number;
+  refunded_at?: string | null;
+  refund_reason?: string | null;
   stripe_payment_intent_id?: string | null;
   stripe_invoice_id?: string | null;
+  stripe_refund_id?: string | null;
+  created_at?: string;
+}
+
+export interface BillingRetryPolicy {
+  id: string;
+  gym_id: string;
+  retry_offsets_days: number[];
+  reminder_offsets_days: number[];
+  max_attempts: number;
+  final_notice_after_days: number;
+  auto_retry_enabled: boolean;
+  member_notifications_enabled: boolean;
+  daily_report_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BillingRetryPolicyInsert {
+  id?: string;
+  gym_id: string;
+  retry_offsets_days?: number[];
+  reminder_offsets_days?: number[];
+  max_attempts?: number;
+  final_notice_after_days?: number;
+  auto_retry_enabled?: boolean;
+  member_notifications_enabled?: boolean;
+  daily_report_enabled?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface BillingRetryPolicyUpdate {
+  id?: string;
+  gym_id?: string;
+  retry_offsets_days?: number[];
+  reminder_offsets_days?: number[];
+  max_attempts?: number;
+  final_notice_after_days?: number;
+  auto_retry_enabled?: boolean;
+  member_notifications_enabled?: boolean;
+  daily_report_enabled?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type BillingRecoveryCaseReason =
+  | "failed_payment"
+  | "past_due_subscription"
+  | "missing_card"
+  | "overdue_payment";
+
+export type BillingRecoveryCaseStatus =
+  | "open"
+  | "retrying"
+  | "waiting_on_member"
+  | "resolved"
+  | "closed";
+
+export type BillingRecoveryPriority = "low" | "medium" | "high" | "critical";
+
+export interface BillingRecoveryCase {
+  id: string;
+  gym_id: string;
+  member_id: string | null;
+  subscription_id: string | null;
+  payment_id: string | null;
+  reason: BillingRecoveryCaseReason;
+  status: BillingRecoveryCaseStatus;
+  priority: BillingRecoveryPriority;
+  amount_cents: number;
+  retry_count: number;
+  max_retries: number;
+  first_failed_at: string | null;
+  next_retry_at: string | null;
+  last_retry_at: string | null;
+  last_reminder_at: string | null;
+  final_notice_at: string | null;
+  resolved_at: string | null;
+  resolution_note: string | null;
+  stripe_invoice_id: string | null;
+  stripe_payment_intent_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BillingRecoveryCaseInsert {
+  id?: string;
+  gym_id: string;
+  member_id?: string | null;
+  subscription_id?: string | null;
+  payment_id?: string | null;
+  reason: BillingRecoveryCaseReason;
+  status?: BillingRecoveryCaseStatus;
+  priority?: BillingRecoveryPriority;
+  amount_cents?: number;
+  retry_count?: number;
+  max_retries?: number;
+  first_failed_at?: string | null;
+  next_retry_at?: string | null;
+  last_retry_at?: string | null;
+  last_reminder_at?: string | null;
+  final_notice_at?: string | null;
+  resolved_at?: string | null;
+  resolution_note?: string | null;
+  stripe_invoice_id?: string | null;
+  stripe_payment_intent_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface BillingRecoveryCaseUpdate {
+  id?: string;
+  gym_id?: string;
+  member_id?: string | null;
+  subscription_id?: string | null;
+  payment_id?: string | null;
+  reason?: BillingRecoveryCaseReason;
+  status?: BillingRecoveryCaseStatus;
+  priority?: BillingRecoveryPriority;
+  amount_cents?: number;
+  retry_count?: number;
+  max_retries?: number;
+  first_failed_at?: string | null;
+  next_retry_at?: string | null;
+  last_retry_at?: string | null;
+  last_reminder_at?: string | null;
+  final_notice_at?: string | null;
+  resolved_at?: string | null;
+  resolution_note?: string | null;
+  stripe_invoice_id?: string | null;
+  stripe_payment_intent_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type BillingRecoveryAttemptAction =
+  | "retry_charge"
+  | "send_reminder"
+  | "final_notice"
+  | "manual_note"
+  | "mark_resolved"
+  | "refund";
+
+export type BillingRecoveryAttemptStatus =
+  | "scheduled"
+  | "processing"
+  | "succeeded"
+  | "failed"
+  | "skipped";
+
+export interface BillingRecoveryAttempt {
+  id: string;
+  gym_id: string;
+  case_id: string;
+  payment_id: string | null;
+  member_id: string | null;
+  attempt_number: number;
+  action: BillingRecoveryAttemptAction;
+  status: BillingRecoveryAttemptStatus;
+  scheduled_at: string | null;
+  processed_at: string | null;
+  amount_cents: number;
+  result_message: string | null;
+  stripe_invoice_id: string | null;
+  stripe_payment_intent_id: string | null;
+  idempotency_key: string | null;
+  created_at: string;
+}
+
+export interface BillingRecoveryAttemptInsert {
+  id?: string;
+  gym_id: string;
+  case_id: string;
+  payment_id?: string | null;
+  member_id?: string | null;
+  attempt_number?: number;
+  action: BillingRecoveryAttemptAction;
+  status?: BillingRecoveryAttemptStatus;
+  scheduled_at?: string | null;
+  processed_at?: string | null;
+  amount_cents?: number;
+  result_message?: string | null;
+  stripe_invoice_id?: string | null;
+  stripe_payment_intent_id?: string | null;
+  idempotency_key?: string | null;
+  created_at?: string;
+}
+
+export interface BillingRecoveryAttemptUpdate {
+  id?: string;
+  gym_id?: string;
+  case_id?: string;
+  payment_id?: string | null;
+  member_id?: string | null;
+  attempt_number?: number;
+  action?: BillingRecoveryAttemptAction;
+  status?: BillingRecoveryAttemptStatus;
+  scheduled_at?: string | null;
+  processed_at?: string | null;
+  amount_cents?: number;
+  result_message?: string | null;
+  stripe_invoice_id?: string | null;
+  stripe_payment_intent_id?: string | null;
+  idempotency_key?: string | null;
+  created_at?: string;
+}
+
+export interface BillingDailyReport {
+  id: string;
+  gym_id: string;
+  report_date: string;
+  metrics: Json;
+  created_at: string;
+}
+
+export interface BillingDailyReportInsert {
+  id?: string;
+  gym_id: string;
+  report_date: string;
+  metrics?: Json;
+  created_at?: string;
+}
+
+export interface BillingDailyReportUpdate {
+  id?: string;
+  gym_id?: string;
+  report_date?: string;
+  metrics?: Json;
   created_at?: string;
 }
 
