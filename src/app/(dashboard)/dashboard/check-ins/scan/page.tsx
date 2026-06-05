@@ -49,7 +49,7 @@ export default async function CheckInScanPage({
         <DashboardPageHeader
           eyebrow="QR check-ins"
           title="Scan member QR"
-          description={`Simulate a front-desk scan for ${currentGym.data.membership.gymName}. Paste a member_id from the mobile QR code to record a gym-scoped check-in.`}
+          description={`Simulate a front-desk scan for ${currentGym.data.membership.gymName}. Paste a member QR payload from the mobile app to record a gym-scoped check-in.`}
         />
         <Link
           className="inline-flex h-12 items-center justify-center rounded-xl border border-border px-5 text-sm font-medium"
@@ -63,7 +63,7 @@ export default async function CheckInScanPage({
         <section className="panel p-6">
           <h2 className="text-lg font-semibold">Simulated scan input</h2>
           <p className="mt-2 text-sm text-muted">
-            Use the member app QR value for now. The server will only accept members in the current gym.
+            Use the member app QR value for now. Structured QR payloads and legacy member IDs are both accepted, but the server will only allow members in the current gym.
           </p>
 
           {resolvedSearchParams?.message ? (
@@ -82,11 +82,11 @@ export default async function CheckInScanPage({
                 defaultValue={qrValue}
                 id="qrValue"
                 name="qrValue"
-                placeholder="Paste member_id from QR code"
+                placeholder="Paste QR payload from the member app"
                 required
               />
               <p className="mt-2 text-xs text-muted">
-                No camera integration yet. This text input simulates the scan result.
+                No camera integration yet. This input simulates the front-desk scan result.
               </p>
             </div>
             <button

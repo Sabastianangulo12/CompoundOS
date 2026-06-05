@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { AppSupabaseClient } from "@/lib/supabase/types";
 import type { Database } from "@/types/database";
 
 export const memberStatuses = [
@@ -19,7 +19,7 @@ export function normalizeMemberSearch(value: string | undefined) {
 }
 
 export async function getMemberByIdForGym(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   gymId: string,
   memberId: string
 ) {
@@ -30,4 +30,3 @@ export async function getMemberByIdForGym(
     .eq("id", memberId)
     .maybeSingle();
 }
-

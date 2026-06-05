@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { AppSupabaseClient } from "@/lib/supabase/types";
 import type { Database } from "@/types/database";
 
 type CheckInRow = Database["public"]["Tables"]["check_ins"]["Row"];
@@ -57,7 +57,7 @@ export function countTodayCheckIns(checkIns: CheckInRow[], timeZone: string) {
 }
 
 export async function getRecentCheckInsForGym(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   gymId: string,
   limit = 25
 ) {
@@ -85,7 +85,19 @@ export async function getRecentCheckInsForGym(
     .limit(limit);
 
   return {
-    data: (data ?? []) as CheckInWithMember[],
+    data: ((data ?? []) as unknown as Array<
+      CheckInRow & {
+        members: Array<{
+          id: string;
+          first_name: string;
+          last_name: string;
+          email: string | null;
+        }> | null;
+      }
+    >).map((checkIn) => ({
+      ...checkIn,
+      members: checkIn.members?.[0] ?? null
+    })) as CheckInWithMember[],
     error
   };
 }

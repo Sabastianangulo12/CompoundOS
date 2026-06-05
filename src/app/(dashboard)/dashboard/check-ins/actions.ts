@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { buildGymAccessMessage, getCurrentGymContext } from "@/lib/gym-users";
+import { parseMemberQrValue } from "@/lib/member-qr";
 import { getMemberByIdForGym } from "@/lib/members";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -81,7 +82,8 @@ export async function createManualCheckInAction(formData: FormData) {
 
 export async function createQrCheckInAction(formData: FormData) {
   const qrValue = String(formData.get("qrValue") ?? "").trim();
-  const memberId = qrValue;
+  const parsedQr = parseMemberQrValue(qrValue);
+  const memberId = parsedQr?.memberId?.trim() ?? "";
   const supabase = await createSupabaseServerClient();
   const currentGym = await getCurrentGymContext(supabase);
 
@@ -95,6 +97,10 @@ export async function createQrCheckInAction(formData: FormData) {
 
   if (!memberId) {
     redirect(checkInScanMessage("Enter a member QR value to record a check-in.", qrValue));
+  }
+
+  if (parsedQr?.gymId && parsedQr.gymId !== currentGym.data.membership.gymId) {
+    redirect(checkInScanMessage("Scanned QR belongs to a different gym.", qrValue));
   }
 
   const existingMember = await getMemberByIdForGym(
