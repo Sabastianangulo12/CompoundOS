@@ -1,8 +1,9 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { buildGymAccessMessage, getCurrentGymContext } from "@/lib/gym-users";
+import { membershipPlansTag } from "@/lib/member-intake";
 import {
   getMembershipPlanByIdForGym,
   getSubscriptionByIdForGym,
@@ -15,7 +16,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { hasStripeServerEnv } from "@/lib/env";
 import {
   createConnectOnboardingLink,
-  createSubscriptionCheckoutSession
+  createSubscriptionCheckoutSession,
+  formatStripeConnectSetupError
 } from "@/lib/stripe-sync";
 
 function revenueMessage(pathname: string, message: string) {
@@ -36,6 +38,36 @@ function parseCurrencyToCents(value: string) {
 function normalizeNullableDate(value: FormDataEntryValue | null) {
   const raw = String(value ?? "").trim();
   return raw ? new Date(raw).toISOString() : null;
+}
+
+function deriveSubscriptionPeriod(
+  billingInterval: "monthly" | "weekly",
+  currentPeriodStart: string | null,
+  currentPeriodEnd: string | null
+) {
+  const startDate = currentPeriodStart ? new Date(currentPeriodStart) : new Date();
+
+  if (Number.isNaN(startDate.getTime())) {
+    return {
+      currentPeriodStart: null,
+      currentPeriodEnd: null
+    };
+  }
+
+  if (currentPeriodEnd) {
+    return {
+      currentPeriodStart: startDate.toISOString(),
+      currentPeriodEnd
+    };
+  }
+
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + (billingInterval === "weekly" ? 7 : 30));
+
+  return {
+    currentPeriodStart: startDate.toISOString(),
+    currentPeriodEnd: endDate.toISOString()
+  };
 }
 
 export async function createPlanAction(formData: FormData) {
@@ -75,6 +107,7 @@ export async function createPlanAction(formData: FormData) {
     redirect(revenueMessage("/dashboard/revenue", error.message));
   }
 
+  revalidateTag(membershipPlansTag(currentGym.data.membership.gymId));
   revalidatePath("/dashboard/revenue");
   redirect(revenueMessage("/dashboard/revenue", "Plan created."));
 }
@@ -135,6 +168,7 @@ export async function updatePlanAction(formData: FormData) {
     redirect(revenueMessage(`/dashboard/revenue/plans/${planId}/edit`, error.message));
   }
 
+  revalidateTag(membershipPlansTag(currentGym.data.membership.gymId));
   revalidatePath("/dashboard/revenue");
   redirect(revenueMessage("/dashboard/revenue", "Plan updated."));
 }
@@ -169,6 +203,7 @@ export async function archivePlanAction(formData: FormData) {
     redirect(revenueMessage("/dashboard/revenue", error.message));
   }
 
+  revalidateTag(membershipPlansTag(currentGym.data.membership.gymId));
   revalidatePath("/dashboard/revenue");
   redirect(revenueMessage("/dashboard/revenue", "Plan archived."));
 }
@@ -177,8 +212,10 @@ export async function createSubscriptionAction(formData: FormData) {
   const memberId = String(formData.get("memberId") ?? "").trim();
   const membershipPlanId = String(formData.get("membershipPlanId") ?? "").trim();
   const status = String(formData.get("status") ?? "").trim();
+  const redirectTo = String(formData.get("redirectTo") ?? "").trim();
   const currentPeriodStart = normalizeNullableDate(formData.get("currentPeriodStart"));
   const currentPeriodEnd = normalizeNullableDate(formData.get("currentPeriodEnd"));
+  const targetPath = redirectTo || "/dashboard/revenue";
   const supabase = await createSupabaseServerClient();
   const currentGym = await getCurrentGymContext(supabase);
 
@@ -193,7 +230,7 @@ export async function createSubscriptionAction(formData: FormData) {
   if (!memberId || !membershipPlanId || !isSubscriptionStatus(status)) {
     redirect(
       revenueMessage(
-        "/dashboard/revenue",
+        targetPath,
         "Member, plan, and subscription status are required."
       )
     );
@@ -235,16 +272,22 @@ export async function createSubscriptionAction(formData: FormData) {
     .maybeSingle();
 
   if (existingSubscription.error) {
-    redirect(revenueMessage("/dashboard/revenue", existingSubscription.error.message));
+    redirect(revenueMessage(targetPath, existingSubscription.error.message));
   }
+
+  const derivedPeriod = deriveSubscriptionPeriod(
+    planResult.data.billing_interval,
+    currentPeriodStart,
+    currentPeriodEnd
+  );
 
   const payload = {
     gym_id: currentGym.data.membership.gymId,
     member_id: memberId,
     membership_plan_id: membershipPlanId,
     status,
-    current_period_start: currentPeriodStart,
-    current_period_end: currentPeriodEnd
+    current_period_start: derivedPeriod.currentPeriodStart,
+    current_period_end: derivedPeriod.currentPeriodEnd
   };
 
   const { error } = existingSubscription.data
@@ -256,14 +299,14 @@ export async function createSubscriptionAction(formData: FormData) {
     : await supabase.from("subscriptions").insert(payload);
 
   if (error) {
-    redirect(revenueMessage("/dashboard/revenue", error.message));
+    redirect(revenueMessage(targetPath, error.message));
   }
 
   revalidatePath("/dashboard/revenue");
   revalidatePath(`/dashboard/members/${memberId}/edit`);
   redirect(
     revenueMessage(
-      "/dashboard/revenue",
+      targetPath,
       existingSubscription.data ? "Subscription updated." : "Subscription created."
     )
   );
@@ -437,17 +480,15 @@ export async function startStripeConnectOnboardingAction() {
     );
   }
 
+  let onboardingUrl: string;
   try {
     const accountLink = await createConnectOnboardingLink(supabase, gymResult.data);
-    redirect(accountLink.url);
+    onboardingUrl = accountLink.url;
   } catch (error) {
-    redirect(
-      revenueMessage(
-        "/dashboard/revenue",
-        error instanceof Error ? error.message : "Stripe onboarding could not start."
-      )
-    );
+    redirect(revenueMessage("/dashboard/revenue", formatStripeConnectSetupError(error)));
   }
+
+  redirect(onboardingUrl);
 }
 
 export async function startStripeCheckoutAction(formData: FormData) {
@@ -462,6 +503,8 @@ export async function startStripeCheckoutAction(formData: FormData) {
 
   const memberId = String(formData.get("memberId") ?? "").trim();
   const membershipPlanId = String(formData.get("membershipPlanId") ?? "").trim();
+  const redirectTo = String(formData.get("redirectTo") ?? "").trim();
+  const targetPath = redirectTo || "/dashboard/revenue";
   const supabase = await createSupabaseServerClient();
   const currentGym = await getCurrentGymContext(supabase);
 
@@ -476,7 +519,7 @@ export async function startStripeCheckoutAction(formData: FormData) {
   if (!memberId || !membershipPlanId) {
     redirect(
       revenueMessage(
-        "/dashboard/revenue",
+        targetPath,
         "Select a member and plan before opening Stripe checkout."
       )
     );
@@ -519,6 +562,7 @@ export async function startStripeCheckoutAction(formData: FormData) {
     );
   }
 
+  let checkoutUrl: string;
   try {
     const session = await createSubscriptionCheckoutSession({
       supabase,
@@ -528,16 +572,18 @@ export async function startStripeCheckoutAction(formData: FormData) {
     });
 
     if (!session.url) {
-      redirect(revenueMessage("/dashboard/revenue", "Stripe checkout URL was missing."));
+      throw new Error("Stripe checkout URL was missing.");
     }
 
-    redirect(session.url);
+    checkoutUrl = session.url;
   } catch (error) {
     redirect(
       revenueMessage(
-        "/dashboard/revenue",
+        targetPath,
         error instanceof Error ? error.message : "Stripe checkout could not start."
       )
     );
   }
+
+  redirect(checkoutUrl);
 }

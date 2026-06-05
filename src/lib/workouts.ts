@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { AppSupabaseClient } from "@/lib/supabase/types";
 import type { Database } from "@/types/database";
 
 export type WorkoutWithSets = Database["public"]["Tables"]["workouts"]["Row"] & {
@@ -6,7 +6,7 @@ export type WorkoutWithSets = Database["public"]["Tables"]["workouts"]["Row"] & 
 };
 
 export async function getRecentWorkoutsForMember(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   gymId: string,
   memberId: string,
   limit = 5

@@ -9,7 +9,7 @@
 body {
   @apply bg-background text-foreground antialiased;
   background-image:
-    radial-gradient(circle at top, rgba(214, 253, 81, 0.12), transparent 28%),
+    radial-gradient(circle at top, rgba(214, 253, 81, 0.08), transparent 22%),
     linear-gradient(180deg, #09090b 0%, #09090b 100%);
 }
 
@@ -17,9 +17,41 @@ a {
   @apply transition-colors;
 }
 
-@layer components {
-  .panel {
-    @apply rounded-2xl border border-border bg-card/80 backdrop-blur;
+@layer base {
+  select {
+    background-color: #09090b;
+    color: #fafafa;
+  }
+
+  select option,
+  select optgroup {
+    background-color: #09090b;
+    color: #fafafa;
   }
 }
 
+@layer components {
+  .panel {
+    @apply rounded-2xl border border-border bg-card;
+  }
+
+  .panel-soft {
+    @apply rounded-2xl border border-border/80 bg-card/70;
+  }
+
+  .panel-hero {
+    @apply rounded-3xl border border-border bg-card;
+  }
+
+  .section-kicker {
+    @apply text-[11px] font-medium uppercase tracking-[0.24em] text-accent;
+  }
+
+  .action-link {
+    @apply inline-flex items-center rounded-full border border-border/80 bg-card/70 px-3 py-1.5 text-sm font-medium text-foreground hover:border-accent/50 hover:text-accent;
+  }
+
+  .status-pill {
+    @apply inline-flex items-center rounded-full border border-border/80 bg-card px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-muted;
+  }
+}

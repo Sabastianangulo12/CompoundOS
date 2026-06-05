@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
-import { getActiveGymMembership } from "@/lib/gym-users";
+import { getCurrentGymContext } from "@/lib/gym-users";
 import { DashboardSidebar } from "@/components/dashboard/sidebar";
+import { DashboardRuntimeGuard } from "@/components/dashboard/runtime-guard";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export default async function DashboardLayout({
@@ -10,37 +11,23 @@ export default async function DashboardLayout({
   children: ReactNode;
 }) {
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error: userError
-  } = await supabase.auth.getUser();
+  const currentGym = await getCurrentGymContext(supabase);
 
-  if (userError) {
-    redirect(`/login?message=${encodeURIComponent(userError.message)}`);
+  if (currentGym.error) {
+    redirect(`/login?message=${encodeURIComponent(currentGym.error.message)}`);
   }
 
-  if (!user) {
-    redirect("/login");
-  }
-
-  const membership = await getActiveGymMembership(supabase, user.id);
-
-  if (membership.error) {
-    redirect(
-      `/login?message=${encodeURIComponent(membership.error.message)}`
-    );
-  }
-
-  if (!membership.data) {
+  if (!currentGym.data) {
     redirect("/onboarding/create-gym");
   }
 
   return (
     <div className="min-h-screen bg-background">
+      <DashboardRuntimeGuard />
       <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-4 sm:px-6 lg:flex-row lg:px-8">
         <DashboardSidebar
-          userEmail={user.email ?? "Owner"}
-          gymName={membership.data.gymName}
+          userEmail={currentGym.data.user.email ?? "Owner"}
+          gymName={currentGym.data.membership.gymName}
         />
         <main className="flex-1">{children}</main>
       </div>

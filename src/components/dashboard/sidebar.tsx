@@ -6,11 +6,20 @@ import { usePathname } from "next/navigation";
 const navigation = [
   { href: "/dashboard", label: "Overview" },
   { href: "/dashboard/members", label: "Members" },
+  { href: "/dashboard/schedule", label: "Schedule" },
   { href: "/dashboard/check-ins", label: "Check-ins" },
-  { href: "/dashboard/revenue", label: "Revenue" },
+  { href: "/dashboard/front-desk", label: "Front Desk" },
+  { href: "/dashboard/news", label: "News" },
+  { href: "/dashboard/notifications", label: "Notifications" },
+  { href: "/dashboard/challenges", label: "Challenges" },
+  { href: "/dashboard/culture", label: "Culture" },
+  { href: "/dashboard/revenue", label: "Memberships & Billing" },
+  { href: "/dashboard/billing-recovery", label: "Billing Recovery" },
   { href: "/dashboard/retention", label: "Retention" },
+  { href: "/dashboard/reports", label: "Reports" },
   { href: "/dashboard/ai-command-center", label: "AI Command Center" },
-  { href: "/dashboard/automations", label: "Automations" }
+  { href: "/dashboard/automations", label: "Automations" },
+  { href: "/dashboard/settings", label: "Settings" }
 ];
 
 type DashboardSidebarProps = {
@@ -25,7 +34,7 @@ export function DashboardSidebar({
   const pathname = usePathname();
 
   return (
-    <aside className="w-full shrink-0 lg:sticky lg:top-4 lg:h-[calc(100vh-2rem)] lg:w-72">
+    <aside className="w-full shrink-0 lg:w-72">
       <div className="panel flex h-full flex-col p-4">
         <div className="border-b border-border px-3 pb-4">
           <p className="text-xs uppercase tracking-[0.24em] text-accent">
@@ -52,6 +61,7 @@ export function DashboardSidebar({
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch
                 className={[
                   "block shrink-0 rounded-xl px-3 py-2 text-sm",
                   isActive

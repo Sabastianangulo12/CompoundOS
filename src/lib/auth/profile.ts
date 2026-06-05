@@ -1,8 +1,8 @@
-import type { SupabaseClient, User } from "@supabase/supabase-js";
-import type { Database } from "@/types/database";
+import type { User } from "@supabase/supabase-js";
+import type { AppSupabaseClient } from "@/lib/supabase/types";
 
 export async function upsertProfileForUser(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   user: User
 ) {
   const fullName =
@@ -27,4 +27,3 @@ export async function upsertProfileForUser(
     }
   );
 }
-
