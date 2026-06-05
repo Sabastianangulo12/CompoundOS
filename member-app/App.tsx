@@ -1,5 +1,11 @@
-import { ReactNode, useEffect, useMemo, useState } from "react";
-import { Alert, ActivityIndicator, Text, View } from "react-native";
+import React, {
+  ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState
+} from "react";
+import { Alert, ActivityIndicator, Platform, Pressable, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { NavigationContainer, DefaultTheme } from "@react-navigation/native";
 import type { Session } from "@supabase/supabase-js";
@@ -14,25 +20,37 @@ import {
 } from "./src/components/ui";
 import {
   claimCurrentMemberProfile,
-  createManualCheckIn,
-  fetchRecentCheckIns,
-  fetchCurrentMemberWithGym,
-  fetchMemberStats,
   type CheckInRecord,
   type MemberAppContext,
   type MemberStats
 } from "./src/lib/member";
+import { fetchMemberAppBootstrap } from "./src/lib/bootstrap";
 import {
   fetchRecentNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
   registerForPushNotifications,
   savePushToken,
   type MemberNotification
 } from "./src/lib/notifications";
 import {
+  type GymAnnouncementRecord
+} from "./src/lib/news";
+import {
   fetchCommunityFeed,
+  fetchFriendStepLeaderboard,
   reactToPost,
-  type CommunityPostRecord
+  type CommunityPostRecord,
+  type FriendStepLeader
 } from "./src/lib/community";
+import {
+  fetchActiveChallenges,
+  fetchActiveSpotlights,
+  fetchRecentShoutouts,
+  type GymChallengeRecord,
+  type GymMemberSpotlightRecord,
+  type GymShoutoutRecord
+} from "./src/lib/culture";
 import { hasSupabaseConfig, supabase } from "./src/lib/supabase";
 import {
   createWorkout,
@@ -40,7 +58,13 @@ import {
   type WorkoutRecord,
   type WorkoutSetInput
 } from "./src/lib/workouts";
+import { syncMemberBillingState } from "./src/lib/billing";
 import type { CoachMessage } from "./src/lib/ai-coach";
+import {
+  defaultDailyStepGoal,
+  loadDailyStepGoal,
+  saveDailyStepGoal
+} from "./src/lib/settings";
 import { colors } from "./src/theme";
 
 type AuthMode = "login" | "signup";
@@ -67,6 +91,77 @@ const emptyWorkouts: WorkoutRecord[] = [];
 const emptyNotifications: MemberNotification[] = [];
 const emptyCheckIns: CheckInRecord[] = [];
 const emptyCommunityPosts: CommunityPostRecord[] = [];
+const emptyFriendLeaders: FriendStepLeader[] = [];
+const emptyAnnouncements: GymAnnouncementRecord[] = [];
+const emptyChallenges: GymChallengeRecord[] = [];
+const emptyShoutouts: GymShoutoutRecord[] = [];
+const emptySpotlights: GymMemberSpotlightRecord[] = [];
+const memberLoadWarningThresholdMs = 12000;
+
+function mergeAppNotice(currentNotice: string | null, nextNotice: string) {
+  if (!nextNotice.trim()) {
+    return currentNotice;
+  }
+
+  if (currentNotice?.includes(nextNotice)) {
+    return currentNotice;
+  }
+
+  return currentNotice ? `${currentNotice} | ${nextNotice}` : nextNotice;
+}
+
+function isIgnorableBackgroundNotice(message: string) {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("failed to fetch") ||
+    normalized.includes("network request failed") ||
+    normalized.includes("timed out")
+  );
+}
+
+type AppErrorBoundaryState = {
+  error: Error | null;
+};
+
+class AppErrorBoundary extends React.Component<
+  { children: ReactNode },
+  AppErrorBoundaryState
+> {
+  state: AppErrorBoundaryState = {
+    error: null
+  };
+
+  static getDerivedStateFromError(error: Error) {
+    return {
+      error
+    };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error("Member app runtime error", error);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <SafeAreaProvider>
+          <ScreenSurface>
+            <StatusBar style="light" />
+            <CenteredState
+              title="App failed to load"
+              body={
+                this.state.error.message ||
+                "A runtime error interrupted startup."
+              }
+            />
+          </ScreenSurface>
+        </SafeAreaProvider>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 export default function App() {
   const [authMode, setAuthMode] = useState<AuthMode>("login");
@@ -75,8 +170,8 @@ export default function App() {
   const [memberContext, setMemberContext] = useState<MemberAppContext | null>(null);
   const [memberStats, setMemberStats] = useState<MemberStats>(emptyStats);
   const [memberLoading, setMemberLoading] = useState(false);
+  const [memberLoadingWarning, setMemberLoadingWarning] = useState(false);
   const [authPending, setAuthPending] = useState(false);
-  const [checkInPending, setCheckInPending] = useState(false);
   const [workoutPending, setWorkoutPending] = useState(false);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [memberError, setMemberError] = useState<string | null>(null);
@@ -88,6 +183,15 @@ export default function App() {
   const [recentCheckIns, setRecentCheckIns] = useState<CheckInRecord[]>(emptyCheckIns);
   const [communityPosts, setCommunityPosts] =
     useState<CommunityPostRecord[]>(emptyCommunityPosts);
+  const [friendStepLeaders, setFriendStepLeaders] =
+    useState<FriendStepLeader[]>(emptyFriendLeaders);
+  const [announcements, setAnnouncements] =
+    useState<GymAnnouncementRecord[]>(emptyAnnouncements);
+  const [challenges, setChallenges] = useState<GymChallengeRecord[]>(emptyChallenges);
+  const [shoutouts, setShoutouts] = useState<GymShoutoutRecord[]>(emptyShoutouts);
+  const [spotlights, setSpotlights] =
+    useState<GymMemberSpotlightRecord[]>(emptySpotlights);
+  const [dailyStepGoal, setDailyStepGoal] = useState(defaultDailyStepGoal);
   const [pushStatusMessage, setPushStatusMessage] = useState<string | null>(null);
   const [coachWorkoutDraft, setCoachWorkoutDraft] = useState<{
     title: string;
@@ -119,6 +223,210 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    void loadDailyStepGoal().then((goal) => {
+      setDailyStepGoal(goal);
+    });
+  }, []);
+
+  const refreshMemberData = useCallback(async (_userId: string) => {
+    try {
+      setMemberLoading(true);
+      setMemberError(null);
+      setAppNotice(null);
+
+      let bootstrapResult = await fetchMemberAppBootstrap();
+
+      if (!bootstrapResult.error && !bootstrapResult.data) {
+        const claimResult = await claimCurrentMemberProfile();
+
+        if (claimResult.error) {
+          setMemberContext(null);
+          setMemberStats(emptyStats);
+          setRecentWorkouts(emptyWorkouts);
+          setNotifications(emptyNotifications);
+          setRecentCheckIns(emptyCheckIns);
+          setCommunityPosts(emptyCommunityPosts);
+          setFriendStepLeaders(emptyFriendLeaders);
+          setAnnouncements(emptyAnnouncements);
+          setChallenges(emptyChallenges);
+          setShoutouts(emptyShoutouts);
+          setSpotlights(emptySpotlights);
+          setMemberError(claimResult.error.message);
+          setMemberLoading(false);
+          return;
+        }
+
+        bootstrapResult = await fetchMemberAppBootstrap();
+      }
+
+      if (bootstrapResult.error) {
+        setMemberContext(null);
+        setMemberStats(emptyStats);
+        setRecentWorkouts(emptyWorkouts);
+        setNotifications(emptyNotifications);
+        setRecentCheckIns(emptyCheckIns);
+        setCommunityPosts(emptyCommunityPosts);
+        setFriendStepLeaders(emptyFriendLeaders);
+        setAnnouncements(emptyAnnouncements);
+        setChallenges(emptyChallenges);
+        setShoutouts(emptyShoutouts);
+        setSpotlights(emptySpotlights);
+        setMemberLoading(false);
+        setMemberError(bootstrapResult.error.message);
+        return;
+      }
+
+      if (!bootstrapResult.data) {
+        setMemberContext(null);
+        setMemberStats(emptyStats);
+        setRecentWorkouts(emptyWorkouts);
+        setNotifications(emptyNotifications);
+        setRecentCheckIns(emptyCheckIns);
+        setCommunityPosts(emptyCommunityPosts);
+        setFriendStepLeaders(emptyFriendLeaders);
+        setAnnouncements(emptyAnnouncements);
+        setChallenges(emptyChallenges);
+        setShoutouts(emptyShoutouts);
+        setSpotlights(emptySpotlights);
+        setMemberError(
+          "No member profile is linked to this account yet. Ask your gym to attach your member record."
+        );
+        setMemberLoading(false);
+        return;
+      }
+
+      const activeContext = bootstrapResult.data.context;
+      setMemberContext(activeContext);
+      setMemberStats(bootstrapResult.data.stats);
+      setNotifications(bootstrapResult.data.notifications);
+      setRecentCheckIns(bootstrapResult.data.recentCheckIns);
+      setAnnouncements(bootstrapResult.data.announcements);
+
+      setAppNotice(null);
+      setMemberLoading(false);
+
+      void syncMemberBillingState().then((billingSyncResult) => {
+        if (billingSyncResult.error) {
+          if (
+            Platform.OS === "web" &&
+            isIgnorableBackgroundNotice(billingSyncResult.error.message)
+          ) {
+            return;
+          }
+
+          setAppNotice((currentNotice) => {
+            const billingNotice = `Billing sync: ${billingSyncResult.error.message}`;
+            return mergeAppNotice(currentNotice, billingNotice);
+          });
+        }
+      });
+
+      void (async () => {
+        const [
+          workoutsResult,
+          communityResult,
+          friendLeaderboardResult,
+          challengesResult,
+          shoutoutsResult,
+          spotlightsResult
+        ] = await Promise.all([
+          fetchRecentWorkouts(36),
+          fetchCommunityFeed(),
+          fetchFriendStepLeaderboard(5),
+          fetchActiveChallenges(activeContext.member.gym_id),
+          fetchRecentShoutouts(activeContext.member.gym_id),
+          fetchActiveSpotlights(activeContext.member.gym_id)
+        ]);
+
+        const deferredWarnings: string[] = [];
+
+        if (workoutsResult.error) {
+          setRecentWorkouts(emptyWorkouts);
+          deferredWarnings.push(`Workouts: ${workoutsResult.error.message}`);
+        } else {
+          setRecentWorkouts(workoutsResult.data ?? emptyWorkouts);
+        }
+
+        if (communityResult.error) {
+          setCommunityPosts(emptyCommunityPosts);
+          deferredWarnings.push(`Community: ${communityResult.error.message}`);
+        } else {
+          setCommunityPosts(communityResult.data ?? emptyCommunityPosts);
+        }
+
+        if (friendLeaderboardResult.error) {
+          setFriendStepLeaders(emptyFriendLeaders);
+          deferredWarnings.push(
+            `Leaderboard: ${friendLeaderboardResult.error.message}`
+          );
+        } else {
+          setFriendStepLeaders(
+            friendLeaderboardResult.data ?? emptyFriendLeaders
+          );
+        }
+
+        if (challengesResult.error) {
+          setChallenges(emptyChallenges);
+          deferredWarnings.push(`Challenges: ${challengesResult.error.message}`);
+        } else {
+          setChallenges(challengesResult.data ?? emptyChallenges);
+        }
+
+        if (shoutoutsResult.error) {
+          setShoutouts(emptyShoutouts);
+          deferredWarnings.push(`Shoutouts: ${shoutoutsResult.error.message}`);
+        } else {
+          setShoutouts(shoutoutsResult.data ?? emptyShoutouts);
+        }
+
+        if (spotlightsResult.error) {
+          setSpotlights(emptySpotlights);
+          deferredWarnings.push(`Spotlights: ${spotlightsResult.error.message}`);
+        } else {
+          setSpotlights(spotlightsResult.data ?? emptySpotlights);
+        }
+
+        if (deferredWarnings.length > 0) {
+          setAppNotice((currentNotice) =>
+            mergeAppNotice(currentNotice, deferredWarnings.join(" | "))
+          );
+        }
+      })().catch((error) => {
+        console.error("Deferred member app refresh failed", error);
+        setAppNotice((currentNotice) =>
+          mergeAppNotice(
+            currentNotice,
+            error instanceof Error
+              ? error.message
+              : "Deferred member content could not finish loading."
+          )
+        );
+      });
+
+      return;
+    } catch (error) {
+      console.error("Failed to refresh member app context", error);
+      setMemberContext(null);
+      setMemberStats(emptyStats);
+      setRecentWorkouts(emptyWorkouts);
+      setNotifications(emptyNotifications);
+      setRecentCheckIns(emptyCheckIns);
+      setCommunityPosts(emptyCommunityPosts);
+      setFriendStepLeaders(emptyFriendLeaders);
+      setAnnouncements(emptyAnnouncements);
+      setChallenges(emptyChallenges);
+      setShoutouts(emptyShoutouts);
+      setSpotlights(emptySpotlights);
+      setMemberError(
+        error instanceof Error
+          ? error.message
+          : "A startup error interrupted loading your member app."
+      );
+      setMemberLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
     if (!session?.user.id) {
       setMemberContext(null);
       setMemberStats(emptyStats);
@@ -126,7 +434,13 @@ export default function App() {
       setNotifications(emptyNotifications);
       setRecentCheckIns(emptyCheckIns);
       setCommunityPosts(emptyCommunityPosts);
+      setFriendStepLeaders(emptyFriendLeaders);
+      setAnnouncements(emptyAnnouncements);
+      setChallenges(emptyChallenges);
+      setShoutouts(emptyShoutouts);
+      setSpotlights(emptySpotlights);
       setMemberLoading(false);
+      setMemberLoadingWarning(false);
       setMemberError(null);
       setAppNotice(null);
       setPushStatusMessage(null);
@@ -134,117 +448,22 @@ export default function App() {
     }
 
     void refreshMemberData(session.user.id);
-  }, [session?.user.id]);
+  }, [refreshMemberData, session?.user.id]);
 
-  async function refreshMemberData(userId: string) {
-    setMemberLoading(true);
-    setMemberError(null);
-    setAppNotice(null);
-
-    const claimResult = await claimCurrentMemberProfile();
-
-    if (claimResult.error) {
-      setMemberContext(null);
-      setMemberStats(emptyStats);
-      setRecentWorkouts(emptyWorkouts);
-      setNotifications(emptyNotifications);
-      setRecentCheckIns(emptyCheckIns);
-      setCommunityPosts(emptyCommunityPosts);
-      setMemberError(claimResult.error.message);
-      setMemberLoading(false);
+  useEffect(() => {
+    if (!memberLoading) {
+      setMemberLoadingWarning(false);
       return;
     }
 
-    const profileResult = await fetchCurrentMemberWithGym(userId);
+    const timeout = setTimeout(() => {
+      setMemberLoadingWarning(true);
+    }, memberLoadWarningThresholdMs);
 
-    if (profileResult.error) {
-      setMemberContext(null);
-      setMemberStats(emptyStats);
-      setRecentWorkouts(emptyWorkouts);
-      setNotifications(emptyNotifications);
-      setRecentCheckIns(emptyCheckIns);
-      setCommunityPosts(emptyCommunityPosts);
-      setMemberLoading(false);
-      setMemberError(profileResult.error.message);
-      return;
-    }
-
-    if (!profileResult.data) {
-      setMemberContext(null);
-      setMemberStats(emptyStats);
-      setRecentWorkouts(emptyWorkouts);
-      setNotifications(emptyNotifications);
-      setRecentCheckIns(emptyCheckIns);
-      setCommunityPosts(emptyCommunityPosts);
-      setMemberError(
-        "No member profile is linked to this account yet. Ask your gym to attach your member record."
-      );
-      setMemberLoading(false);
-      return;
-    }
-
-    setMemberContext(profileResult.data);
-
-    const [
-      statsResult,
-      workoutsResult,
-      notificationsResult,
-      checkInsResult,
-      communityResult
-    ] =
-      await Promise.all([
-        fetchMemberStats(profileResult.data.member),
-        fetchRecentWorkouts(6),
-        fetchRecentNotifications(12),
-        fetchRecentCheckIns(profileResult.data.member, 8),
-        fetchCommunityFeed()
-      ]);
-    const warnings: string[] = [];
-
-    if (statsResult.error) {
-      setMemberStats(emptyStats);
-      setRecentWorkouts(emptyWorkouts);
-      setNotifications(emptyNotifications);
-      setRecentCheckIns(emptyCheckIns);
-      setCommunityPosts(emptyCommunityPosts);
-      setMemberError(statsResult.error.message);
-      setMemberLoading(false);
-      return;
-    }
-
-    if (workoutsResult.error) {
-      setMemberStats(statsResult.data);
-      setRecentWorkouts(emptyWorkouts);
-      warnings.push(`Workouts: ${workoutsResult.error.message}`);
-    } else {
-      setRecentWorkouts(workoutsResult.data ?? emptyWorkouts);
-    }
-
-    if (notificationsResult.error) {
-      setNotifications(emptyNotifications);
-      warnings.push(`Notifications: ${notificationsResult.error.message}`);
-    } else {
-      setNotifications(notificationsResult.data ?? emptyNotifications);
-    }
-
-    if (checkInsResult.error) {
-      setRecentCheckIns(emptyCheckIns);
-      warnings.push(`Check-ins: ${checkInsResult.error.message}`);
-    } else {
-      setRecentCheckIns(checkInsResult.data ?? emptyCheckIns);
-    }
-
-    if (communityResult.error) {
-      setCommunityPosts(emptyCommunityPosts);
-      warnings.push(`Community: ${communityResult.error.message}`);
-    } else {
-      setCommunityPosts(communityResult.data ?? emptyCommunityPosts);
-    }
-
-    setMemberStats(statsResult.data);
-    setAppNotice(warnings.length > 0 ? warnings.join(" | ") : null);
-    setMemberLoading(false);
-  }
+    return () => {
+      clearTimeout(timeout);
+    };
+  }, [memberLoading]);
 
   useEffect(() => {
     if (!memberContext) {
@@ -254,34 +473,51 @@ export default function App() {
     let isMounted = true;
 
     async function setupPushToken() {
-      const registration = await registerForPushNotifications();
+      try {
+        const registration = await registerForPushNotifications();
 
-      if (!isMounted) {
-        return;
+        if (!isMounted) {
+          return;
+        }
+
+        if (registration.error) {
+          setPushStatusMessage(registration.error.message);
+          return;
+        }
+
+        if (registration.supported === false) {
+          setPushStatusMessage(null);
+          return;
+        }
+
+        if (!registration.token) {
+          setPushStatusMessage("Push notifications are unavailable on this device.");
+          return;
+        }
+
+        const saveResult = await savePushToken(registration.token);
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (saveResult.error) {
+          setPushStatusMessage(saveResult.error.message);
+          return;
+        }
+
+        setPushStatusMessage("Push notifications enabled on this device.");
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+
+        setPushStatusMessage(
+          error instanceof Error
+            ? error.message
+            : "Push notifications could not be enabled on this device."
+        );
       }
-
-      if (registration.error) {
-        setPushStatusMessage(registration.error.message);
-        return;
-      }
-
-      if (!registration.token) {
-        setPushStatusMessage("Push notifications are unavailable on this device.");
-        return;
-      }
-
-      const saveResult = await savePushToken(registration.token);
-
-      if (!isMounted) {
-        return;
-      }
-
-      if (saveResult.error) {
-        setPushStatusMessage(saveResult.error.message);
-        return;
-      }
-
-      setPushStatusMessage("Push notifications enabled on this device.");
     }
 
     void setupPushToken();
@@ -289,7 +525,7 @@ export default function App() {
     return () => {
       isMounted = false;
     };
-  }, [memberContext?.member.id]);
+  }, [memberContext, memberContext?.member.id]);
 
   async function handleLogin(email: string, password: string) {
     setAuthPending(true);
@@ -334,37 +570,16 @@ export default function App() {
     setAuthMode("login");
   }
 
-  async function handleCheckIn() {
-    if (!memberContext) {
-      return;
-    }
-
-    setCheckInPending(true);
-    const result = await createManualCheckIn(memberContext.member);
-    setCheckInPending(false);
-
-    if (result.error) {
-      Alert.alert("Check-in failed", result.error.message);
-      return;
-    }
-
-    if (session?.user.id) {
-      await refreshMemberData(session.user.id);
-    }
-
-    Alert.alert("Checked in", "Your visit has been recorded.");
-  }
-
   async function handleLogout() {
     await supabase.auth.signOut();
   }
 
-  async function handleCreateWorkout(input: {
+  const handleCreateWorkout = useCallback(async (input: {
     title: string;
     performedAt?: string;
     notes?: string;
     sets: WorkoutSetInput[];
-  }) {
+  }) => {
     setWorkoutPending(true);
     const result = await createWorkout(input);
     setWorkoutPending(false);
@@ -381,7 +596,7 @@ export default function App() {
     Alert.alert("Workout saved", "Your workout has been logged.");
     setCoachWorkoutDraft(null);
     return true;
-  }
+  }, [refreshMemberData, session?.user.id]);
 
   async function handleQuickCommunityLike(postId: string) {
     const result = await reactToPost(postId, "🔥");
@@ -413,6 +628,46 @@ export default function App() {
     });
   }
 
+  async function handleUpdateDailyStepGoal(nextGoal: number) {
+    const savedGoal = await saveDailyStepGoal(nextGoal);
+    setDailyStepGoal(savedGoal);
+  }
+
+  const refreshNotifications = useCallback(async () => {
+    const result = await fetchRecentNotifications(12);
+
+    if (result.error) {
+      setAppNotice((current) =>
+        [current, `Notifications: ${result.error?.message}`].filter(Boolean).join(" | ")
+      );
+      return;
+    }
+
+    setNotifications(result.data ?? emptyNotifications);
+  }, []);
+
+  const handleMarkNotificationRead = useCallback(async (notificationId: string) => {
+    const result = await markNotificationRead(notificationId);
+
+    if (result.error) {
+      Alert.alert("Notification update failed", result.error.message);
+      return;
+    }
+
+    await refreshNotifications();
+  }, [refreshNotifications]);
+
+  const handleMarkAllNotificationsRead = useCallback(async () => {
+    const result = await markAllNotificationsRead();
+
+    if (result.error) {
+      Alert.alert("Notification update failed", result.error.message);
+      return;
+    }
+
+    await refreshNotifications();
+  }, [refreshNotifications]);
+
   const appContext = useMemo(
     () => ({
       memberContext,
@@ -420,28 +675,43 @@ export default function App() {
       recentCheckIns,
       notifications,
       communityPosts,
+      friendStepLeaders,
+      announcements,
+      challenges,
+      shoutouts,
+      spotlights,
+      dailyStepGoal,
       pushStatusMessage,
       recentWorkouts,
       coachWorkoutDraft,
-      checkInPending,
       workoutPending,
-      onCheckIn: handleCheckIn,
       onCreateWorkout: handleCreateWorkout,
       onStartWorkoutFromCoach: handleStartWorkoutFromCoach,
       onQuickCommunityLike: handleQuickCommunityLike,
+      onUpdateDailyStepGoal: handleUpdateDailyStepGoal,
+      onMarkNotificationRead: handleMarkNotificationRead,
+      onMarkAllNotificationsRead: handleMarkAllNotificationsRead,
       onSignOut: handleLogout
     }),
     [
-      checkInPending,
       memberContext,
       memberStats,
       recentCheckIns,
       notifications,
       communityPosts,
+      friendStepLeaders,
+      announcements,
+      challenges,
+      shoutouts,
+      spotlights,
+      dailyStepGoal,
       pushStatusMessage,
       recentWorkouts,
       coachWorkoutDraft,
-      workoutPending
+      workoutPending,
+      handleCreateWorkout,
+      handleMarkNotificationRead,
+      handleMarkAllNotificationsRead
     ]
   );
 
@@ -502,6 +772,42 @@ export default function App() {
   }
 
   if (memberLoading) {
+    if (memberLoadingWarning) {
+      return (
+        <SafeAreaProvider>
+          <ScreenSurface>
+            <StatusBar style="light" />
+            <CenteredState
+              title="Still loading your gym"
+              body={
+                Platform.OS === "web"
+                  ? "Your web session is taking longer than expected to restore. Try reloading once or retry member startup below."
+                  : "Your member session is taking longer than expected. Try member startup again."
+              }
+              footer={
+                <View style={{ gap: 12 }}>
+                  <SecondaryButton
+                    label="Retry member startup"
+                    onPress={() => {
+                      if (session?.user.id) {
+                        void refreshMemberData(session.user.id);
+                      }
+                    }}
+                  />
+                  <PrimaryButton
+                    label="Sign out"
+                    onPress={() => {
+                      void handleLogout();
+                    }}
+                  />
+                </View>
+              }
+            />
+          </ScreenSurface>
+        </SafeAreaProvider>
+      );
+    }
+
     return (
       <SafeAreaProvider>
         <ScreenSurface>
@@ -545,42 +851,107 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider>
-      <View style={{ flex: 1, backgroundColor: colors.background }}>
-        <NavigationContainer theme={navigationTheme}>
-          <StatusBar style="light" />
-          <AppTabs context={appContext} />
-        </NavigationContainer>
-        {appNotice ? (
-          <View
-            style={{
-              position: "absolute",
-              left: 16,
-              right: 16,
-              bottom: 20,
-              borderRadius: 18,
-              borderWidth: 1,
-              borderColor: colors.border,
-              backgroundColor: colors.panel,
-              paddingHorizontal: 16,
-              paddingVertical: 14
-            }}
-          >
-            <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19 }}>
-              {appNotice}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-    </SafeAreaProvider>
+    <AppErrorBoundary>
+      <SafeAreaProvider>
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+          <NavigationContainer theme={navigationTheme}>
+            <StatusBar style="light" />
+            <AppTabs
+              context={{
+                ...appContext,
+                memberContext
+              }}
+            />
+          </NavigationContainer>
+          {appNotice ? (
+            <View
+              style={{
+                position: "absolute",
+                left: 16,
+                right: 16,
+                bottom: 20,
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor: colors.panel,
+                paddingHorizontal: 16,
+                paddingVertical: 14
+              }}
+            >
+              <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19 }}>
+                {appNotice}
+              </Text>
+              <Pressable
+                onPress={() => setAppNotice(null)}
+                style={{ position: "absolute", right: 10, top: 10, padding: 6 }}
+              >
+                <Text style={{ color: colors.text, fontSize: 13, fontWeight: "700" }}>Close</Text>
+              </Pressable>
+            </View>
+          ) : null}
+        </View>
+      </SafeAreaProvider>
+    </AppErrorBoundary>
   );
 }
 
 function CenteredLoading({ label }: { label: string }) {
   return (
-    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 16 }}>
-      <ActivityIndicator color={colors.accent} />
-      <Text style={{ color: colors.muted, fontSize: 15 }}>{label}</Text>
+    <View
+      style={{
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingHorizontal: 24
+      }}
+    >
+      <View
+        style={{
+          width: "100%",
+          maxWidth: 420,
+          borderRadius: 30,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.panel,
+          paddingHorizontal: 24,
+          paddingVertical: 30,
+          alignItems: "center",
+          gap: 16
+        }}
+      >
+        <View
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 999,
+            backgroundColor: colors.panelElevated,
+            alignItems: "center",
+            justifyContent: "center"
+          }}
+        >
+          <ActivityIndicator color={colors.accent} />
+        </View>
+        <Text
+          style={{
+            color: colors.text,
+            fontSize: 20,
+            fontWeight: "700",
+            textAlign: "center"
+          }}
+        >
+          Getting your club ready
+        </Text>
+        <Text
+          style={{
+            color: colors.muted,
+            fontSize: 15,
+            textAlign: "center",
+            lineHeight: 22
+          }}
+        >
+          {label}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -607,14 +978,27 @@ function CenteredState({
         style={{
           width: "100%",
           maxWidth: 420,
-          borderRadius: 28,
+          borderRadius: 30,
           borderWidth: 1,
           borderColor: colors.border,
           backgroundColor: colors.panel,
           padding: 24,
-          gap: 12
+          gap: 12,
+          shadowColor: "#000000",
+          shadowOpacity: 0.22,
+          shadowOffset: { width: 0, height: 18 },
+          shadowRadius: 40
         }}
       >
+        <View
+          style={{
+            width: 44,
+            height: 5,
+            borderRadius: 999,
+            backgroundColor: colors.accent,
+            opacity: 0.9
+          }}
+        />
         <Text style={{ color: colors.text, fontSize: 24, fontWeight: "700" }}>
           {title}
         </Text>

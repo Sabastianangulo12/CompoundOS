@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
-import { useNavigation } from "@react-navigation/native";
 import {
   Card,
   PrimaryButton,
@@ -45,7 +44,6 @@ export function CoachScreen({
   const [pending, setPending] = useState(false);
   const [messages, setMessages] = useState<CoachMessage[]>([]);
   const scrollRef = useRef<ScrollView | null>(null);
-  const navigation = useNavigation();
 
   useEffect(() => {
     let isMounted = true;
@@ -244,7 +242,6 @@ export function CoachScreen({
                         label="Start Workout"
                         onPress={() => {
                           onStartWorkout(message);
-                          navigation.navigate("Workouts" as never);
                         }}
                       />
                     </View>

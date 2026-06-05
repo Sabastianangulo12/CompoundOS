@@ -1,5 +1,13 @@
 import { supabase } from "./supabase";
 
+export type FriendStepLeader = {
+  member_id: string;
+  first_name: string;
+  last_name: string;
+  step_count: number;
+  rank: number;
+};
+
 export type CommunityPostVisibility = "friends_only" | "gym_feed";
 export type PostReaction = "🔥" | "💪" | "👏";
 
@@ -139,6 +147,17 @@ export async function fetchCommunityFeed() {
 
   return {
     data: rankCommunityPosts((result.data ?? []) as CommunityPostRecord[]),
+    error: result.error
+  };
+}
+
+export async function fetchFriendStepLeaderboard(limit = 5) {
+  const result = await supabase.rpc("fetch_friend_step_leaderboard", {
+    leaderboard_limit: limit
+  });
+
+  return {
+    data: (result.data ?? []) as FriendStepLeader[],
     error: result.error
   };
 }

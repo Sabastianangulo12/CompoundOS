@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Image, Pressable, Text, View } from "react-native";
 import {
   Card,
@@ -26,6 +26,19 @@ import {
   type FriendRequestRecord,
   type PostReaction
 } from "../lib/community";
+import type {
+  GymMemberSpotlightRecord,
+  GymShoutoutRecord
+} from "../lib/culture";
+
+function toOneRelation<T>(value: T | T[] | null | undefined): T | null {
+  if (!value) {
+    return null;
+  }
+
+  return Array.isArray(value) ? value[0] ?? null : value;
+}
+import { formatDateTime } from "../lib/format";
 import type { MemberAppContext } from "../lib/member";
 import { colors } from "../theme";
 
@@ -46,9 +59,13 @@ const POST_VISIBILITY_OPTIONS: Array<{
 const REACTIONS: PostReaction[] = ["🔥", "💪", "👏"];
 
 export function CommunityScreen({
-  memberContext
+  memberContext,
+  shoutouts,
+  spotlights
 }: {
   memberContext: MemberAppContext;
+  shoutouts: GymShoutoutRecord[];
+  spotlights: GymMemberSpotlightRecord[];
 }) {
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<CommunityMemberPreview[]>([]);
@@ -63,11 +80,7 @@ export function CommunityScreen({
   const [loading, setLoading] = useState(false);
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    void loadCommunity();
-  }, [memberContext.member.id]);
-
-  async function loadCommunity() {
+  const loadCommunity = useCallback(async () => {
     setLoading(true);
     const [requestsResult, postsResult] = await Promise.all([
       fetchFriendRequests(memberContext.member.id),
@@ -87,7 +100,11 @@ export function CommunityScreen({
 
     setRequests(requestsResult.data ?? []);
     setPosts(postsResult.data ?? []);
-  }
+  }, [memberContext.member.id]);
+
+  useEffect(() => {
+    void loadCommunity();
+  }, [loadCommunity]);
 
   const filteredPosts = useMemo(() => {
     if (feedFilter === "all") {
@@ -227,6 +244,99 @@ export function CommunityScreen({
         title="Community"
         subtitle="Private by default, gym-scoped, and built around real member connections."
       />
+
+      <Card>
+        <Text style={{ color: colors.text, fontSize: 20, fontWeight: "700" }}>
+          Spotlight
+        </Text>
+        {spotlights.length === 0 ? (
+          <Text style={{ color: colors.muted, fontSize: 14 }}>
+            No member spotlight has been published yet.
+          </Text>
+        ) : (
+          spotlights.slice(0, 1).map((spotlight) => {
+            const member = toOneRelation(spotlight.members);
+
+            return (
+            <View
+              key={spotlight.id}
+              style={{
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor: colors.panelElevated,
+                padding: 14,
+                gap: 10
+              }}
+            >
+              <Text style={{ color: colors.text, fontSize: 17, fontWeight: "700" }}>
+                {spotlight.title}
+              </Text>
+              <Text style={{ color: colors.muted, fontSize: 13 }}>
+                {member?.first_name} {member?.last_name}
+              </Text>
+              {spotlight.image_url ? (
+                // eslint-disable-next-line jsx-a11y/alt-text
+                <Image
+                  accessibilityLabel={`${spotlight.title} spotlight image`}
+                  source={{ uri: spotlight.image_url }}
+                  style={{
+                    width: "100%",
+                    height: 220,
+                    borderRadius: 18,
+                    backgroundColor: colors.background
+                  }}
+                />
+              ) : null}
+              <Text style={{ color: colors.text, fontSize: 14, lineHeight: 20 }}>
+                {spotlight.body}
+              </Text>
+            </View>
+          );
+          })
+        )}
+      </Card>
+
+      <Card>
+        <Text style={{ color: colors.text, fontSize: 20, fontWeight: "700" }}>
+          Gym shoutouts
+        </Text>
+        {shoutouts.length === 0 ? (
+          <Text style={{ color: colors.muted, fontSize: 14 }}>
+            No shoutouts posted yet.
+          </Text>
+        ) : (
+          <View style={{ gap: 10 }}>
+            {shoutouts.map((shoutout) => (
+              <View
+                key={shoutout.id}
+                style={{
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.panelElevated,
+                  padding: 14,
+                  gap: 6
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Text style={{ color: colors.text, fontSize: 15, fontWeight: "700", flex: 1 }}>
+                    {shoutout.title}
+                  </Text>
+                  {shoutout.is_pinned ? (
+                    <Text style={{ color: colors.accent, fontSize: 11, fontWeight: "700" }}>
+                      PINNED
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19 }}>
+                  {shoutout.body}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </Card>
 
       <Card>
         <Text style={{ color: colors.text, fontSize: 20, fontWeight: "700" }}>
@@ -471,6 +581,7 @@ export function CommunityScreen({
                     </Text>
                   ) : null}
                   {post.image_url ? (
+                    // eslint-disable-next-line jsx-a11y/alt-text
                     <Image
                       source={{ uri: post.image_url }}
                       style={{
@@ -482,10 +593,7 @@ export function CommunityScreen({
                     />
                   ) : null}
                   <Text style={{ color: colors.muted, fontSize: 12 }}>
-                    {new Date(post.created_at).toLocaleString("en-US", {
-                      dateStyle: "medium",
-                      timeStyle: "short"
-                    })}
+                    {formatDateTime(post.created_at)}
                   </Text>
                   {canInteract ? (
                     <>

@@ -2,8 +2,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "./supabase";
 import type { CheckInRecord, MemberAppContext, MemberStats } from "./member";
 import type { WorkoutRecord } from "./workouts";
+import { getApiBaseUrl } from "./api";
 
-const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? "";
 const lastRecommendationStorageKey = "ai_coach_last_recommendation";
 
 export type SuggestedWorkoutItem = {
@@ -34,13 +34,6 @@ export async function askAICoach(input: {
   recentCheckIns: CheckInRecord[];
   question: string;
 }) {
-  if (!apiUrl) {
-    return {
-      recommendation: null,
-      error: new Error("EXPO_PUBLIC_API_URL is not configured.")
-    };
-  }
-
   const {
     data: { session }
   } = await supabase.auth.getSession();
@@ -55,7 +48,7 @@ export async function askAICoach(input: {
   let response: Response;
 
   try {
-    response = await fetch(`${apiUrl.replace(/\/$/, "")}/api/ai-coach`, {
+    response = await fetch(`${getApiBaseUrl()}/api/ai-coach`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

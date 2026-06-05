@@ -1,0 +1,12 @@
+.expo
+.expo-export-smoke
+.expo-web-export-smoke
+.expo-native.log
+.expo-native.err.log
+expo-*.log
+node_modules
+dist
+web-build
+coverage
+*.tmp
+*.log

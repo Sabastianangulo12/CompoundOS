@@ -11,6 +11,8 @@ export type MemberRecord = {
   email: string | null;
   phone: string | null;
   status: MemberStatus;
+  frozen_until: string | null;
+  canceled_at: string | null;
   joined_at: string | null;
 };
 
@@ -43,7 +45,7 @@ export async function claimCurrentMemberProfile() {
 }
 
 export async function fetchCurrentMemberWithGym(userId: string) {
-  const result = await supabase
+  const memberResult = await supabase
     .from("members")
     .select(
       `
@@ -55,13 +57,9 @@ export async function fetchCurrentMemberWithGym(userId: string) {
         email,
         phone,
         status,
-        joined_at,
-        gyms (
-          id,
-          name,
-          slug,
-          timezone
-        )
+        frozen_until,
+        canceled_at,
+        joined_at
       `
     )
     .eq("user_id", userId)
@@ -70,21 +68,33 @@ export async function fetchCurrentMemberWithGym(userId: string) {
     .limit(1)
     .maybeSingle();
 
-  if (result.error) {
+  if (memberResult.error) {
     return {
       data: null,
-      error: result.error
+      error: memberResult.error
     };
   }
 
-  if (!result.data) {
+  if (!memberResult.data) {
     return {
       data: null,
       error: null
     };
   }
 
-  const member = result.data as MemberRecord & { gyms: GymRecord | null };
+  const member = memberResult.data as MemberRecord;
+  const gymResult = await supabase
+    .from("gyms")
+    .select("id, name, slug, timezone")
+    .eq("id", member.gym_id)
+    .maybeSingle();
+
+  if (gymResult.error) {
+    return {
+      data: null,
+      error: gymResult.error
+    };
+  }
 
   return {
     data: {
@@ -97,9 +107,11 @@ export async function fetchCurrentMemberWithGym(userId: string) {
         email: member.email,
         phone: member.phone,
         status: member.status,
+        frozen_until: member.frozen_until,
+        canceled_at: member.canceled_at,
         joined_at: member.joined_at
       },
-      gym: member.gyms
+      gym: (gymResult.data as GymRecord | null) ?? null
     } satisfies MemberAppContext,
     error: null
   };

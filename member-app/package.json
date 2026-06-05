@@ -8,28 +8,38 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "eas:build:development:ios": "eas build --platform ios --profile development",
+    "eas:build:preview:ios": "eas build --platform ios --profile preview",
+    "eas:build:production:ios": "eas build --platform ios --profile production"
   },
   "dependencies": {
+    "@expo/metro-runtime": "~6.1.2",
     "@react-native-async-storage/async-storage": "^2.1.0",
     "@react-navigation/bottom-tabs": "^7.3.10",
     "@react-navigation/native": "^7.1.9",
     "@supabase/supabase-js": "^2.49.8",
-    "expo-constants": "~17.1.6",
-    "expo-device": "~7.1.4",
-    "expo-notifications": "~0.31.4",
-    "expo": "~53.0.9",
-    "expo-status-bar": "~2.2.3",
-    "react": "19.0.0",
-    "react-native": "0.79.2",
+    "expo": "~54.0.34",
+    "expo-build-properties": "~1.0.9",
+    "expo-constants": "~18.0.13",
+    "expo-dev-client": "~6.0.21",
+    "expo-device": "~8.0.10",
+    "expo-local-authentication": "~17.0.8",
+    "expo-notifications": "^0.32.17",
+    "expo-status-bar": "~3.0.9",
+    "react": "^19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "^0.81.5",
     "react-native-qrcode-svg": "^6.3.15",
-    "react-native-safe-area-context": "5.4.0",
-    "react-native-screens": "~4.11.1",
-    "react-native-svg": "15.11.2"
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
+    "react-native-svg": "^15.12.1",
+    "react-native-web": "^0.21.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
-    "@types/react": "^19.1.4",
+    "@types/react": "~19.1.10",
+    "babel-preset-expo": "~54.0.10",
     "typescript": "^5.8.3"
   }
 }

@@ -8,6 +8,7 @@ import {
   SecondaryButton,
   TextField
 } from "../components/ui";
+import { formatMediumDate } from "../lib/format";
 import type { SuggestedWorkoutItem } from "../lib/ai-coach";
 import type { WorkoutRecord, WorkoutSetInput } from "../lib/workouts";
 import { colors } from "../theme";
@@ -247,7 +248,7 @@ export function WorkoutsScreen({
           </Text>
         ) : (
           <View style={{ gap: 14 }}>
-            {workouts.map((workout) => (
+            {workouts.slice(0, 6).map((workout) => (
               <View
                 key={workout.id}
                 style={{
@@ -263,9 +264,7 @@ export function WorkoutsScreen({
                   {workout.title}
                 </Text>
                 <Text style={{ color: colors.muted, fontSize: 13 }}>
-                  {new Date(workout.performed_at).toLocaleDateString("en-US", {
-                    dateStyle: "medium"
-                  })}{" "}
+                  {formatMediumDate(workout.performed_at)}{" "}
                   | {workout.workout_sets.length} set
                   {workout.workout_sets.length === 1 ? "" : "s"}
                 </Text>
