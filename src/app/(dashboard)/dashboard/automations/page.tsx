@@ -1,7 +1,11 @@
 import { redirect } from "next/navigation";
 import { DashboardPageHeader } from "@/components/dashboard/page-header";
 import { PlaceholderCard } from "@/components/dashboard/placeholder-card";
-import { toggleAutomationAction } from "@/app/(dashboard)/dashboard/automations/actions";
+import { ServerActionButton } from "@/components/dashboard/server-action-button";
+import {
+  runAutomationSweepAction,
+  toggleAutomationAction
+} from "@/app/(dashboard)/dashboard/automations/actions";
 import {
   automationActionLabels,
   automationTriggerLabels,
@@ -118,14 +122,23 @@ export default async function AutomationsPage({
   const activeAutomations = automations.filter((automation) => automation.is_active);
   const successfulLogs = logs.filter((log) => log.result === "success");
   const skippedLogs = logs.filter((log) => log.result === "skipped");
+  const memberTouchLogs = logs.filter((log) => log.member_id).length;
 
   return (
     <section className="space-y-6">
-      <DashboardPageHeader
-        eyebrow="Automations"
-        title="Insight-driven automation rules"
-        description={`Simple internal automations for ${currentGym.data.membership.gymName}. Trigger actions from AI insights without exposing tenant controls in the client.`}
-      />
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <DashboardPageHeader
+          eyebrow="Automations"
+          title="Insight-driven automation rules"
+          description={`Simple internal automations for ${currentGym.data.membership.gymName}. Trigger actions from AI insights without exposing tenant controls in the client.`}
+        />
+        <form action={runAutomationSweepAction}>
+          <ServerActionButton
+            idleLabel="Run automation sweep"
+            pendingLabel="Running..."
+          />
+        </form>
+      </div>
 
       {resolvedSearchParams?.message ? (
         <div className="rounded-2xl border border-border bg-black/20 px-4 py-3 text-sm text-muted">
@@ -133,7 +146,7 @@ export default async function AutomationsPage({
         </div>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <PlaceholderCard
           title="Active automations"
           value={String(activeAutomations.length)}
@@ -148,6 +161,11 @@ export default async function AutomationsPage({
           title="Skipped events"
           value={String(skippedLogs.length)}
           description="Insight events without an active matching automation."
+        />
+        <PlaceholderCard
+          title="Member touches"
+          value={String(memberTouchLogs)}
+          description="Recent automation log entries tied to a specific member."
         />
       </div>
 
@@ -187,9 +205,16 @@ export default async function AutomationsPage({
                       </span>
                     </div>
                     <p className="text-sm text-muted">
-                      {automationTriggerLabels[automation.trigger_type]} |{" "}
+                      {automationTriggerLabels[
+                        automation.trigger_type as Automation["trigger_type"]
+                      ]}{" "}
+                      |{" "}
                       {formatInsightTypeLabel(automation.insight_type)} |{" "}
-                      {automationActionLabels[automation.action_type]}
+                      {
+                        automationActionLabels[
+                          automation.action_type as Automation["action_type"]
+                        ]
+                      }
                     </p>
                     <p className="text-sm text-muted">
                       {lastRun
@@ -208,17 +233,11 @@ export default async function AutomationsPage({
                       name="nextValue"
                       value={automation.is_active ? "false" : "true"}
                     />
-                    <button
-                      className={[
-                        "rounded-xl px-4 py-2 text-sm font-medium",
-                        automation.is_active
-                          ? "border border-border text-muted hover:text-foreground"
-                          : "bg-accent text-black"
-                      ].join(" ")}
-                      type="submit"
-                    >
-                      {automation.is_active ? "Pause" : "Activate"}
-                    </button>
+                    <ServerActionButton
+                      idleLabel={automation.is_active ? "Pause" : "Activate"}
+                      pendingLabel="Saving..."
+                      variant={automation.is_active ? "secondary" : "primary"}
+                    />
                   </form>
                 </article>
               );

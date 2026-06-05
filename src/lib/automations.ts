@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { AppSupabaseClient } from "@/lib/supabase/types";
 import type { Database } from "@/types/database";
 
 type AutomationRow = Database["public"]["Tables"]["automations"]["Row"];
@@ -43,7 +43,7 @@ export const starterAutomations: Array<Database["public"]["Tables"]["automations
 ];
 
 export async function ensureStarterAutomationsForGym(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   gymId: string
 ) {
   const payload = starterAutomations.map((automation) => ({

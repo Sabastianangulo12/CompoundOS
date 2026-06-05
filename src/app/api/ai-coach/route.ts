@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { env, hasSupabaseEnv } from "@/lib/env";
+import type { AppSupabaseClient } from "@/lib/supabase/types";
 import type { Database } from "@/types/database";
 
 type CoachRequestBody = {
@@ -74,19 +75,8 @@ export async function POST(request: NextRequest) {
         error: "Supabase environment variables are not configured."
       },
       {
-        status: 500
-      }
-    );
-  }
-
-  if (!env.openAIApiKey) {
-    return NextResponse.json(
-      {
-        error: "OpenAI API key is not configured."
+        status: 503
       },
-      {
-        status: 500
-      }
     );
   }
 
@@ -104,7 +94,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const supabase = createClient<Database>(env.supabaseUrl, env.supabaseAnonKey);
+  const supabase = createClient<Database>(
+    env.supabaseUrl,
+    env.supabaseAnonKey
+  ) as AppSupabaseClient;
   const {
     data: { user },
     error: userError
@@ -117,6 +110,17 @@ export async function POST(request: NextRequest) {
       },
       {
         status: 401
+      }
+    );
+  }
+
+  if (!env.openAIApiKey) {
+    return NextResponse.json(
+      {
+        error: "OpenAI API key is not configured."
+      },
+      {
+        status: 503
       }
     );
   }
@@ -148,19 +152,44 @@ export async function POST(request: NextRequest) {
 
   const { data: member, error: memberError } = await supabase
     .from("members")
-    .select("id, first_name, last_name, status, gym_id, gyms ( name )")
+    .select("id, first_name, last_name, status, gym_id")
     .eq("id", memberId)
     .eq("user_id", user.id)
     .neq("status", "canceled")
     .maybeSingle();
+  const typedMember = member as {
+    id: string;
+    first_name: string;
+    last_name: string;
+    status: string;
+    gym_id: string;
+  } | null;
 
-  if (memberError || !member) {
+  if (memberError || !typedMember) {
     return NextResponse.json(
       {
         error: memberError?.message ?? "Member profile not found for this user."
       },
       {
         status: 403
+      }
+    );
+  }
+
+  const { data: gym, error: gymError } = await supabase
+    .from("gyms")
+    .select("name")
+    .eq("id", typedMember.gym_id)
+    .maybeSingle();
+  const typedGym = gym as { name: string } | null;
+
+  if (gymError) {
+    return NextResponse.json(
+      {
+        error: gymError.message
+      },
+      {
+        status: 503
       }
     );
   }
@@ -180,9 +209,9 @@ export async function POST(request: NextRequest) {
     "Prioritize actionable output over explanation.",
     "Always return a short explanation plus an optional structured workout plan when useful.",
     "",
-    `Member: ${member.first_name} ${member.last_name}`,
-    `Gym: ${member.gyms?.name ?? basicStats.gymName ?? "Unknown gym"}`,
-    `Status: ${member.status}`,
+    `Member: ${typedMember.first_name} ${typedMember.last_name}`,
+    `Gym: ${typedGym?.name ?? basicStats.gymName ?? "Unknown gym"}`,
+    `Status: ${typedMember.status}`,
     `Current streak: ${basicStats.streak ?? 0}`,
     `Total visits: ${basicStats.totalVisits ?? 0}`,
     `Last check-in: ${basicStats.lastCheckInAt ?? "Unknown"}`,
@@ -196,25 +225,42 @@ export async function POST(request: NextRequest) {
     "Keep the message short. If the user asks what to train today or to adjust a workout, include a suggested_workout array. Focus should be a simple label like Push, Pull, Legs, Full Body, Recovery, or Upper. Intensity should be a short label like Light, Moderate, Hard."
   ].join("\n");
 
-  const openAIResponse = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.openAIApiKey}`
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      input: prompt,
-      text: {
-        format: {
-          type: "json_schema",
-          name: "ai_coach_response",
-          strict: true,
-          schema: coachResponseSchema
+  let openAIResponse: Response;
+
+  try {
+    openAIResponse = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${env.openAIApiKey}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        input: prompt,
+        text: {
+          format: {
+            type: "json_schema",
+            name: "ai_coach_response",
+            strict: true,
+            schema: coachResponseSchema
+          }
         }
+      }),
+      signal: AbortSignal.timeout(20000)
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "AI coach request failed before a response was received."
+      },
+      {
+        status: 502
       }
-    })
-  });
+    );
+  }
 
   if (!openAIResponse.ok) {
     const errorPayload = await openAIResponse.text();

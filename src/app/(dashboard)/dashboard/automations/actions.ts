@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { runAutomationsForInsights } from "@/lib/automation-runner";
 import { buildGymAccessMessage, getCurrentGymContext } from "@/lib/gym-users";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -45,4 +46,51 @@ export async function toggleAutomationAction(formData: FormData) {
   revalidatePath("/dashboard/ai-command-center");
   revalidatePath("/dashboard/automations");
   redirect(automationsMessage(isActive ? "Automation activated." : "Automation paused."));
+}
+
+export async function runAutomationSweepAction() {
+  const supabase = await createSupabaseServerClient();
+  const currentGym = await getCurrentGymContext(supabase);
+
+  if (!currentGym.data) {
+    redirect(
+      currentGym.error
+        ? `/login?message=${encodeURIComponent(currentGym.error.message)}`
+        : `/onboarding/create-gym?message=${encodeURIComponent(buildGymAccessMessage())}`
+    );
+  }
+
+  const { data: insights, error } = await supabase
+    .from("ai_insights")
+    .select("*")
+    .eq("gym_id", currentGym.data.membership.gymId)
+    .eq("status", "open")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) {
+    redirect(automationsMessage(error.message));
+  }
+
+  const result = await runAutomationsForInsights(
+    supabase,
+    currentGym.data.membership.gymId,
+    insights ?? [],
+    {
+      maxInsights: 12
+    }
+  );
+
+  if (result.error) {
+    redirect(automationsMessage(result.error.message));
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/ai-command-center");
+  revalidatePath("/dashboard/automations");
+  redirect(
+    automationsMessage(
+      `Automation sweep complete. Executed ${result.executed} automation run${result.executed === 1 ? "" : "s"}.`
+    )
+  );
 }

@@ -1,10 +1,10 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { DashboardPageHeader } from "@/components/dashboard/page-header";
+import { PlaceholderCard } from "@/components/dashboard/placeholder-card";
 import {
-  dismissInsightAction,
-  runMemberScoringAction
-} from "@/app/(dashboard)/dashboard/ai-command-center/actions";
+  AIInsightCard,
+  RunAnalysisButton
+} from "@/app/(dashboard)/dashboard/ai-command-center/action-buttons";
 import {
   groupInsightsByPriority,
   insightTypeMeta,
@@ -12,6 +12,9 @@ import {
 } from "@/lib/ai-insights";
 import { buildGymAccessMessage, getCurrentGymContext } from "@/lib/gym-users";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 type AICommandCenterPageProps = {
   searchParams?: Promise<{
@@ -31,6 +34,16 @@ const priorityLabels = {
   low: "Low priority"
 } as const;
 
+const insightTaskTypes: Record<string, "billing" | "retention" | "general"> = {
+  failed_payment: "billing",
+  missing_subscription: "billing",
+  revenue_leak: "billing",
+  retention_risk: "retention",
+  inactivity: "retention",
+  attendance_drop: "retention",
+  upsell_opportunity: "general"
+};
+
 export default async function AICommandCenterPage({
   searchParams
 }: AICommandCenterPageProps) {
@@ -46,12 +59,20 @@ export default async function AICommandCenterPage({
     );
   }
 
-  const [insightsResult, scoreResult] = await Promise.all([
+  const [insightsResult, engagementScoresResult, topRiskResult, tasksResult] = await Promise.all([
     supabase
       .from("ai_insights")
       .select(
         `
-          *,
+          id,
+          gym_id,
+          member_id,
+          type,
+          title,
+          description,
+          priority,
+          status,
+          created_at,
           members (
             id,
             first_name,
@@ -64,27 +85,59 @@ export default async function AICommandCenterPage({
       .eq("status", "open")
       .order("created_at", {
         ascending: false
-      }),
+      })
+      .limit(80),
     supabase
       .from("member_scores")
-      .select("engagement_score, retention_risk_score, last_calculated_at")
+      .select("engagement_score")
+      .eq("gym_id", currentGym.data.membership.gymId)
+      .limit(5000),
+    supabase
+      .from("member_scores")
+      .select("retention_risk_score, last_calculated_at")
       .eq("gym_id", currentGym.data.membership.gymId)
       .order("retention_risk_score", {
         ascending: false
       })
+      .limit(1),
+    supabase
+      .from("member_follow_up_tasks")
+      .select("id, member_id, priority")
+      .eq("gym_id", currentGym.data.membership.gymId)
+      .eq("status", "open")
+      .limit(500)
   ]);
 
   if (insightsResult.error) {
     throw new Error(insightsResult.error.message);
   }
 
-  if (scoreResult.error) {
-    throw new Error(scoreResult.error.message);
+  if (engagementScoresResult.error) {
+    throw new Error(engagementScoresResult.error.message);
   }
 
-  const insights = (insightsResult.data ?? []) as InsightWithMember[];
+  if (topRiskResult.error) {
+    throw new Error(topRiskResult.error.message);
+  }
+
+  if (tasksResult.error) {
+    throw new Error(tasksResult.error.message);
+  }
+
+  const insights = ((insightsResult.data ?? []) as Array<
+    Omit<InsightWithMember, "members"> & {
+      members:
+        | Array<Pick<NonNullable<InsightWithMember["members"]>, "id" | "first_name" | "last_name" | "email">>
+        | null;
+    }
+  >).map((insight) => ({
+    ...insight,
+    members: Array.isArray(insight.members) ? (insight.members[0] ?? null) : insight.members
+  })) as InsightWithMember[];
   const grouped = groupInsightsByPriority(insights);
-  const scores = scoreResult.data ?? [];
+  const engagementScores = engagementScoresResult.data ?? [];
+  const topRiskScore = topRiskResult.data?.[0] ?? null;
+  const openTasks = tasksResult.data ?? [];
   const revenueInsightCount = insights.filter((insight) =>
     [
       "failed_payment",
@@ -93,15 +146,48 @@ export default async function AICommandCenterPage({
       "upsell_opportunity"
     ].includes(insight.type)
   ).length;
-  const highestRisk = scores[0]?.retention_risk_score ?? 0;
+  const highestRisk = topRiskScore?.retention_risk_score ?? 0;
   const averageEngagement =
-    scores.length > 0
+    engagementScores.length > 0
       ? Math.round(
-          scores.reduce((total, score) => total + score.engagement_score, 0) /
-            scores.length
+          engagementScores.reduce((total, score) => total + score.engagement_score, 0) /
+            engagementScores.length
         )
       : 0;
-  const lastCalculatedAt = scores[0]?.last_calculated_at ?? null;
+  const lastCalculatedAt = topRiskScore?.last_calculated_at ?? null;
+  const openTaskCountByMember = new Map<string, number>();
+  const highPriorityTaskCountByMember = new Map<string, number>();
+  const insightCountByType = new Map<string, number>();
+
+  openTasks.forEach((task) => {
+    openTaskCountByMember.set(task.member_id, (openTaskCountByMember.get(task.member_id) ?? 0) + 1);
+    if (task.priority === "high") {
+      highPriorityTaskCountByMember.set(
+        task.member_id,
+        (highPriorityTaskCountByMember.get(task.member_id) ?? 0) + 1
+      );
+    }
+  });
+
+  insights.forEach((insight) => {
+    insightCountByType.set(insight.type, (insightCountByType.get(insight.type) ?? 0) + 1);
+  });
+
+  const membersWithTaskCoverage = insights.filter(
+    (insight) => insight.member_id && (openTaskCountByMember.get(insight.member_id) ?? 0) > 0
+  ).length;
+  const uncoveredMemberInsights = insights.filter(
+    (insight) => insight.member_id && (openTaskCountByMember.get(insight.member_id) ?? 0) === 0
+  ).length;
+  const busiestInsightTypes = Object.entries(insightTypeMeta)
+    .map(([type, meta]) => ({
+      type,
+      label: meta.label,
+      count: insightCountByType.get(type) ?? 0
+    }))
+    .filter((entry) => entry.count > 0)
+    .sort((left, right) => right.count - left.count)
+    .slice(0, 4);
 
   return (
     <section className="space-y-6">
@@ -111,14 +197,7 @@ export default async function AICommandCenterPage({
           title="Member scoring and retention signals"
           description={`Action-oriented member and revenue insights for ${currentGym.data.membership.gymName}, generated from gym-scoped attendance and billing behavior.`}
         />
-        <form action={runMemberScoringAction}>
-          <button
-            className="inline-flex h-12 items-center justify-center rounded-xl bg-accent px-5 text-sm font-medium text-black"
-            type="submit"
-          >
-            Run analysis
-          </button>
-        </form>
+        <RunAnalysisButton />
       </div>
 
       {resolvedSearchParams?.message ? (
@@ -127,42 +206,70 @@ export default async function AICommandCenterPage({
         </div>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <section className="panel p-5">
-          <p className="text-sm text-muted">Open insights</p>
-          <p className="mt-3 text-3xl font-semibold">{insights.length}</p>
-          <p className="mt-2 text-sm text-muted">
-            Signals needing operator follow-up right now.
-          </p>
-        </section>
-        <section className="panel p-5">
-          <p className="text-sm text-muted">Revenue-linked insights</p>
-          <p className="mt-3 text-3xl font-semibold">{revenueInsightCount}</p>
-          <p className="mt-2 text-sm text-muted">
-            Billing blockers and expansion opportunities in the current gym.
-          </p>
-        </section>
-        <section className="panel p-5">
-          <p className="text-sm text-muted">Highest risk score</p>
-          <p className="mt-3 text-3xl font-semibold">{highestRisk}</p>
-          <p className="mt-2 text-sm text-muted">
-            Top retention risk score across scored members.
-          </p>
-        </section>
-        <section className="panel p-5 md:col-span-3 xl:col-span-1">
-          <p className="text-sm text-muted">Average engagement</p>
-          <p className="mt-3 text-3xl font-semibold">{averageEngagement}</p>
-          <p className="mt-2 text-sm text-muted">
-            {lastCalculatedAt
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <PlaceholderCard
+          title="Open insights"
+          value={String(insights.length)}
+          description="Signals needing operator follow-up right now."
+        />
+        <PlaceholderCard
+          title="Revenue-linked insights"
+          value={String(revenueInsightCount)}
+          description="Billing blockers and expansion opportunities in this gym."
+        />
+        <PlaceholderCard
+          title="Task-covered insights"
+          value={String(membersWithTaskCoverage)}
+          description="Member insights that already have an open staff task."
+        />
+        <PlaceholderCard
+          title="Unassigned member insights"
+          value={String(uncoveredMemberInsights)}
+          description="Insights with no matching open follow-up task yet."
+        />
+        <PlaceholderCard
+          title="Highest risk score"
+          value={String(highestRisk)}
+          description="Top retention risk score across scored members."
+        />
+        <PlaceholderCard
+          title="Average engagement"
+          value={String(averageEngagement)}
+          description={
+            lastCalculatedAt
               ? `Last calculated ${new Date(lastCalculatedAt).toLocaleString("en-US", {
                   dateStyle: "medium",
                   timeStyle: "short",
                   timeZone: currentGym.data.membership.gymTimezone
                 })}.`
-              : "Run analysis to generate the first score set."}
-          </p>
-        </section>
+              : "Run analysis to generate the first score set."
+          }
+        />
       </div>
+
+      <section className="panel overflow-hidden">
+        <div className="border-b border-border px-6 py-4">
+          <h2 className="text-lg font-semibold">Insight mix</h2>
+          <p className="mt-1 text-sm text-muted">
+            Which signal types are dominating the queue right now.
+          </p>
+        </div>
+        <div className="grid gap-4 px-6 py-5 md:grid-cols-2 xl:grid-cols-4">
+          {busiestInsightTypes.length === 0 ? (
+            <div className="text-sm text-muted">No open insights to summarize yet.</div>
+          ) : (
+            busiestInsightTypes.map((entry) => (
+              <div
+                key={entry.type}
+                className="rounded-3xl border border-border bg-panel-elevated p-4"
+              >
+                <p className="text-sm text-muted">{entry.label}</p>
+                <p className="mt-2 text-2xl font-semibold">{entry.count}</p>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
 
       {(["high", "medium", "low"] as const).map((priority) => (
         <section key={priority} className="space-y-4">
@@ -180,55 +287,25 @@ export default async function AICommandCenterPage({
           ) : (
             <div className="grid gap-4 xl:grid-cols-2">
               {grouped[priority].map((insight) => (
-                <article
+                <AIInsightCard
+                  createdAtLabel={new Date(insight.created_at).toLocaleString("en-US", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                    timeZone: currentGym.data.membership.gymTimezone
+                  })}
                   key={insight.id}
-                  className={[
-                    "panel flex flex-col gap-4 p-5",
-                    priorityStyles[priority]
-                  ].join(" ")}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-muted">
-                        {insightTypeMeta[insight.type].icon} |{" "}
-                        {insightTypeMeta[insight.type].label}
-                      </p>
-                      <h3 className="mt-2 text-lg font-semibold">
-                        {insight.title}
-                      </h3>
-                    </div>
-                    <form action={dismissInsightAction}>
-                      <input name="insightId" type="hidden" value={insight.id} />
-                      <button
-                        className="rounded-xl border border-border px-3 py-2 text-sm text-muted hover:text-foreground"
-                        type="submit"
-                      >
-                        Dismiss
-                      </button>
-                    </form>
-                  </div>
-                  <p className="text-sm text-muted">{insight.description}</p>
-                  <div className="flex flex-col gap-3 border-t border-border/70 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm font-medium">
-                        {insight.members
-                          ? `${insight.members.first_name} ${insight.members.last_name}`
-                          : "Gym-level insight"}
-                      </p>
-                      <p className="mt-1 text-sm text-muted">
-                        {insight.members?.email ?? "No member email on file"}
-                      </p>
-                    </div>
-                    {insight.member_id ? (
-                      <Link
-                        className="text-sm font-medium text-foreground"
-                        href={`/dashboard/members/${insight.member_id}/edit`}
-                      >
-                        Open member
-                      </Link>
-                    ) : null}
-                  </div>
-                </article>
+                  highPriorityTaskCount={
+                    insight.member_id
+                      ? (highPriorityTaskCountByMember.get(insight.member_id) ?? 0)
+                      : 0
+                  }
+                  insight={insight}
+                  insightLabel={insightTypeMeta[insight.type].label}
+                  openTaskCount={
+                    insight.member_id ? (openTaskCountByMember.get(insight.member_id) ?? 0) : 0
+                  }
+                  priorityClassName={priorityStyles[priority]}
+                />
               ))}
             </div>
           )}

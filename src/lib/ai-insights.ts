@@ -1,5 +1,5 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { runAutomationsForInsights } from "@/lib/automation-runner";
+import type { AppSupabaseClient } from "@/lib/supabase/types";
 import type { Database, Member } from "@/types/database";
 import { formatCurrencyFromCents } from "@/lib/revenue";
 
@@ -24,6 +24,38 @@ type CalculatedMemberInsight = {
   status: "open";
 };
 
+type RecalculateGymInsightsOptions = {
+  inlineAutomationLimit?: number;
+  maxOpenInsights?: number;
+};
+
+const DEFAULT_INLINE_AUTOMATION_LIMIT = 0;
+const DEFAULT_MAX_OPEN_INSIGHTS = 80;
+const insightPriorityRank: Record<InsightPriority, number> = {
+  high: 0,
+  medium: 1,
+  low: 2
+};
+
+type MemberSignalRow = Pick<
+  MemberRow,
+  | "id"
+  | "gym_id"
+  | "first_name"
+  | "last_name"
+  | "email"
+  | "phone"
+  | "status"
+  | "created_at"
+  | "updated_at"
+>;
+type CheckInSignalRow = Pick<CheckInRow, "member_id" | "created_at">;
+type SubscriptionSignalRow = Pick<SubscriptionRow, "member_id" | "status">;
+type FailedPaymentSignalRow = Pick<
+  PaymentRow,
+  "member_id" | "status" | "amount_cents" | "created_at"
+>;
+
 function clampScore(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
@@ -44,7 +76,13 @@ function countCheckInsWithinDays(checkIns: CheckInRow[], dayWindow: number) {
     .length;
 }
 
-function buildScoresForMember(member: MemberRow, checkIns: CheckInRow[]) {
+function countRecentCheckIns(checkIns: CheckInSignalRow[], dayWindow: number) {
+  const threshold = Date.now() - dayWindow * 24 * 60 * 60 * 1000;
+  return checkIns.filter((checkIn) => new Date(checkIn.created_at).getTime() >= threshold)
+    .length;
+}
+
+function buildScoresForMember(member: MemberSignalRow, checkIns: CheckInSignalRow[]) {
   const sorted = [...checkIns].sort(
     (left, right) =>
       new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
@@ -52,7 +90,7 @@ function buildScoresForMember(member: MemberRow, checkIns: CheckInRow[]) {
 
   const lastCheckInAt = sorted[0]?.created_at ?? null;
   const days = daysSince(lastCheckInAt);
-  const recent7 = countCheckInsWithinDays(sorted, 7);
+  const recent7 = countRecentCheckIns(sorted, 7);
   const previous7 = sorted.filter((checkIn) => {
     const ageInDays = daysSince(checkIn.created_at);
     return ageInDays > 7 && ageInDays <= 14;
@@ -114,10 +152,10 @@ function buildScoresForMember(member: MemberRow, checkIns: CheckInRow[]) {
 }
 
 function buildInsightsForMember(
-  member: MemberRow,
+  member: MemberSignalRow,
   scores: ReturnType<typeof buildScoresForMember>,
-  subscriptions: SubscriptionRow[],
-  payments: PaymentRow[]
+  subscriptions: SubscriptionSignalRow[],
+  payments: FailedPaymentSignalRow[]
 ) {
   const fullName = `${member.first_name} ${member.last_name}`.trim();
   const insights: CalculatedMemberInsight[] = [];
@@ -240,25 +278,35 @@ function buildInsightsForMember(
 }
 
 export async function recalculateGymInsights(
-  supabase: SupabaseClient<Database>,
-  gymId: string
+  supabase: AppSupabaseClient,
+  gymId: string,
+  options: RecalculateGymInsightsOptions = {}
 ) {
   const [membersResult, checkInsResult, subscriptionsResult, paymentsResult] =
     await Promise.all([
       supabase
         .from("members")
-        .select("*")
+        .select("id,gym_id,first_name,last_name,email,phone,status,created_at,updated_at")
         .eq("gym_id", gymId)
         .neq("status", "canceled"),
       supabase
         .from("check_ins")
-        .select("*")
+        .select("member_id,created_at")
         .eq("gym_id", gymId)
+        .gte("created_at", new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
         .order("created_at", {
           ascending: false
         }),
-      supabase.from("subscriptions").select("*").eq("gym_id", gymId),
-      supabase.from("payments").select("*").eq("gym_id", gymId)
+      supabase
+        .from("subscriptions")
+        .select("member_id,status")
+        .eq("gym_id", gymId)
+        .in("status", ["active", "trialing", "past_due"]),
+      supabase
+        .from("payments")
+        .select("member_id,status,amount_cents,created_at")
+        .eq("gym_id", gymId)
+        .eq("status", "failed")
     ]);
 
   if (membersResult.error) {
@@ -286,12 +334,12 @@ export async function recalculateGymInsights(
   }
 
   const members = membersResult.data ?? [];
-  const checkIns = checkInsResult.data ?? [];
-  const subscriptions = subscriptionsResult.data ?? [];
-  const payments = paymentsResult.data ?? [];
-  const checkInsByMember = new Map<string, CheckInRow[]>();
-  const subscriptionsByMember = new Map<string, SubscriptionRow[]>();
-  const paymentsByMember = new Map<string, PaymentRow[]>();
+  const checkIns = (checkInsResult.data ?? []) as CheckInSignalRow[];
+  const subscriptions = (subscriptionsResult.data ?? []) as SubscriptionSignalRow[];
+  const payments = (paymentsResult.data ?? []) as FailedPaymentSignalRow[];
+  const checkInsByMember = new Map<string, CheckInSignalRow[]>();
+  const subscriptionsByMember = new Map<string, SubscriptionSignalRow[]>();
+  const paymentsByMember = new Map<string, FailedPaymentSignalRow[]>();
 
   checkIns.forEach((checkIn) => {
     const collection = checkInsByMember.get(checkIn.member_id) ?? [];
@@ -341,6 +389,24 @@ export async function recalculateGymInsights(
       paymentsByMember.get(member.id) ?? []
     )
   );
+  const maxOpenInsights =
+    typeof options.maxOpenInsights === "number" && options.maxOpenInsights > 0
+      ? Math.floor(options.maxOpenInsights)
+      : DEFAULT_MAX_OPEN_INSIGHTS;
+  const cappedInsights = [...insights]
+    .sort((left, right) => {
+      const priorityDelta =
+        insightPriorityRank[left.priority] - insightPriorityRank[right.priority];
+
+      if (priorityDelta !== 0) {
+        return priorityDelta;
+      }
+
+      return left.title.localeCompare(right.title);
+    })
+    .slice(0, maxOpenInsights);
+  let automationExecuted = 0;
+  let automationSkippedByLimit = 0;
 
   const { error: deleteError } = await supabase
     .from("ai_insights")
@@ -369,10 +435,10 @@ export async function recalculateGymInsights(
     }
   }
 
-  if (insights.length > 0) {
+  if (cappedInsights.length > 0) {
     const { data: insertedInsights, error: insightError } = await supabase
       .from("ai_insights")
-      .insert(insights)
+      .insert(cappedInsights)
       .select("*");
 
     if (insightError) {
@@ -384,7 +450,11 @@ export async function recalculateGymInsights(
     const automationResult = await runAutomationsForInsights(
       supabase,
       gymId,
-      insertedInsights ?? []
+      insertedInsights ?? [],
+      {
+        maxInsights:
+          options.inlineAutomationLimit ?? DEFAULT_INLINE_AUTOMATION_LIMIT
+      }
     );
 
     if (automationResult.error) {
@@ -392,13 +462,49 @@ export async function recalculateGymInsights(
         error: automationResult.error
       };
     }
+
+    automationExecuted = automationResult.executed;
+    automationSkippedByLimit = automationResult.skippedByLimit;
   }
 
   return {
     error: null,
     processedMembers: members.length,
-    createdInsights: insights.length
+    createdInsights: cappedInsights.length,
+    generatedInsights: insights.length,
+    automationExecuted,
+    automationSkippedByLimit
   };
+}
+
+export function formatInsightRunMessage(result: {
+  automationExecuted?: number;
+  automationSkippedByLimit?: number;
+  createdInsights: number;
+  generatedInsights?: number;
+  processedMembers: number;
+}) {
+  const insightPlural = result.createdInsights === 1 ? "" : "s";
+  const generatedNote =
+    result.generatedInsights && result.generatedInsights > result.createdInsights
+      ? ` Top ${result.createdInsights} of ${result.generatedInsights} generated signal${
+          result.generatedInsights === 1 ? "" : "s"
+        } are open for operators.`
+      : "";
+  const automationNote =
+    typeof result.automationExecuted === "number"
+      ? ` Inline automations ran for ${result.automationExecuted} insight${
+          result.automationExecuted === 1 ? "" : "s"
+        }${
+          result.automationSkippedByLimit
+            ? `; ${result.automationSkippedByLimit} heavier follow-up${
+                result.automationSkippedByLimit === 1 ? "" : "s"
+              } deferred.`
+            : "."
+        }`
+      : "";
+
+  return `Analysis complete. Processed ${result.processedMembers} members and opened ${result.createdInsights} insight${insightPlural}.${generatedNote}${automationNote}`;
 }
 
 export function groupInsightsByPriority(insights: InsightWithMember[]) {

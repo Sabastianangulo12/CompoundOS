@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { recalculateGymInsights } from "@/lib/ai-insights";
+import { formatInsightRunMessage, recalculateGymInsights } from "@/lib/ai-insights";
 import { buildGymAccessMessage, getCurrentGymContext } from "@/lib/gym-users";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -10,52 +10,53 @@ function aiCommandCenterMessage(message: string) {
   return `/dashboard/ai-command-center?message=${encodeURIComponent(message)}`;
 }
 
-export async function runMemberScoringAction() {
+export async function runMemberScoringFastAction() {
   const supabase = await createSupabaseServerClient();
   const currentGym = await getCurrentGymContext(supabase);
 
   if (!currentGym.data) {
-    redirect(
-      currentGym.error
-        ? `/login?message=${encodeURIComponent(currentGym.error.message)}`
-        : `/onboarding/create-gym?message=${encodeURIComponent(buildGymAccessMessage())}`
-    );
+    return {
+      ok: false,
+      message: currentGym.error?.message ?? buildGymAccessMessage()
+    };
   }
 
-  const result = await recalculateGymInsights(
-    supabase,
-    currentGym.data.membership.gymId
-  );
+  const result = await recalculateGymInsights(supabase, currentGym.data.membership.gymId);
 
   if (result.error) {
-    redirect(aiCommandCenterMessage(result.error.message));
+    return {
+      ok: false,
+      message: result.error.message
+    };
   }
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/ai-command-center");
   revalidatePath("/dashboard/automations");
-  redirect(
-    aiCommandCenterMessage(
-      `Analysis complete. Processed ${result.processedMembers} members and opened ${result.createdInsights} insight${result.createdInsights === 1 ? "" : "s"}.`
-    )
-  );
+
+  return {
+    ok: true,
+    message: formatInsightRunMessage(result)
+  };
 }
 
-export async function dismissInsightAction(formData: FormData) {
-  const insightId = String(formData.get("insightId") ?? "").trim();
+export async function dismissInsightFastAction(insightId: string) {
+  const normalizedInsightId = insightId.trim();
   const supabase = await createSupabaseServerClient();
   const currentGym = await getCurrentGymContext(supabase);
 
   if (!currentGym.data) {
-    redirect(
-      currentGym.error
-        ? `/login?message=${encodeURIComponent(currentGym.error.message)}`
-        : `/onboarding/create-gym?message=${encodeURIComponent(buildGymAccessMessage())}`
-    );
+    return {
+      ok: false,
+      message: currentGym.error?.message ?? buildGymAccessMessage()
+    };
   }
 
-  if (!insightId) {
-    redirect(aiCommandCenterMessage("Insight not found."));
+  if (!normalizedInsightId) {
+    return {
+      ok: false,
+      message: "Insight not found."
+    };
   }
 
   const { error } = await supabase
@@ -64,13 +65,31 @@ export async function dismissInsightAction(formData: FormData) {
       status: "dismissed"
     })
     .eq("gym_id", currentGym.data.membership.gymId)
-    .eq("id", insightId);
+    .eq("id", normalizedInsightId);
 
   if (error) {
-    redirect(aiCommandCenterMessage(error.message));
+    return {
+      ok: false,
+      message: error.message
+    };
   }
 
   revalidatePath("/dashboard/ai-command-center");
   revalidatePath("/dashboard/automations");
-  redirect(aiCommandCenterMessage("Insight dismissed."));
+
+  return {
+    ok: true,
+    message: "Insight dismissed."
+  };
+}
+
+export async function runMemberScoringAction() {
+  const result = await runMemberScoringFastAction();
+  redirect(aiCommandCenterMessage(result.message));
+}
+
+export async function dismissInsightAction(formData: FormData) {
+  const insightId = String(formData.get("insightId") ?? "").trim();
+  const result = await dismissInsightFastAction(insightId);
+  redirect(aiCommandCenterMessage(result.message));
 }

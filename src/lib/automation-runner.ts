@@ -1,4 +1,3 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   ensureStarterAutomationsForGym,
   shouldAutomationRunForInsight
@@ -7,13 +6,19 @@ import {
   createAndSendMemberNotification,
   mapInsightTypeToNotificationType
 } from "@/lib/notifications";
+import { logOpsEvent, serializeError } from "@/lib/observability";
+import type { AppSupabaseClient } from "@/lib/supabase/types";
 import type { Database } from "@/types/database";
 
 type AutomationRow = Database["public"]["Tables"]["automations"]["Row"];
 type InsightRow = Database["public"]["Tables"]["ai_insights"]["Row"];
 
+type AutomationRunOptions = {
+  maxInsights?: number;
+};
+
 async function executeAutomationForInsight(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   automation: AutomationRow,
   insight: InsightRow
 ) {
@@ -67,7 +72,7 @@ async function executeAutomationForInsight(
 }
 
 async function maybeSendAutomationNotification(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   automation: AutomationRow,
   insight: InsightRow
 ) {
@@ -112,7 +117,7 @@ function buildAutomationMessage(
 }
 
 async function logSkippedInsight(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   gymId: string,
   insight: InsightRow
 ) {
@@ -147,24 +152,45 @@ async function logSkippedInsight(
 }
 
 export async function runAutomationsForInsights(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   gymId: string,
-  insights: InsightRow[]
+  insights: InsightRow[],
+  options: AutomationRunOptions = {}
 ) {
-  if (insights.length === 0) {
+  const maxInsights =
+    typeof options.maxInsights === "number" && options.maxInsights >= 0
+      ? Math.floor(options.maxInsights)
+      : insights.length;
+  const insightsToProcess = insights.slice(0, maxInsights);
+  const skippedByLimit = Math.max(0, insights.length - insightsToProcess.length);
+
+  logOpsEvent("info", "automation-run-start", {
+    gymId,
+    insightCount: insights.length,
+    inlineInsightCount: insightsToProcess.length,
+    skippedByLimit
+  });
+
+  if (insightsToProcess.length === 0) {
     return {
       error: null,
-      executed: 0
+      executed: 0,
+      skippedByLimit
     };
   }
 
   const { error: seedError } = await ensureStarterAutomationsForGym(supabase, gymId);
 
   if (seedError) {
-    return {
-      error: seedError,
-      executed: 0
-    };
+    logOpsEvent("error", "automation-seed-failed", {
+      gymId,
+      ...serializeError(seedError)
+    });
+      return {
+        error: seedError,
+        executed: 0,
+        skippedByLimit
+      };
   }
 
   const { data: automations, error } = await supabase
@@ -174,16 +200,21 @@ export async function runAutomationsForInsights(
     .eq("is_active", true);
 
   if (error) {
+    logOpsEvent("error", "automation-load-failed", {
+      gymId,
+      ...serializeError(error)
+    });
     return {
       error,
-      executed: 0
+      executed: 0,
+      skippedByLimit
     };
   }
 
   let executed = 0;
   const activeAutomations = automations ?? [];
 
-  for (const insight of insights) {
+  for (const insight of insightsToProcess) {
     const matchingAutomations = activeAutomations.filter((automation) =>
       shouldAutomationRunForInsight(automation, insight)
     );
@@ -192,9 +223,15 @@ export async function runAutomationsForInsights(
       const skippedResult = await logSkippedInsight(supabase, gymId, insight);
 
       if (skippedResult.error) {
+        logOpsEvent("error", "automation-skip-log-failed", {
+          gymId,
+          insightId: insight.id,
+          ...serializeError(skippedResult.error)
+        });
         return {
           error: skippedResult.error,
-          executed
+          executed,
+          skippedByLimit
         };
       }
 
@@ -205,9 +242,16 @@ export async function runAutomationsForInsights(
       const result = await executeAutomationForInsight(supabase, automation, insight);
 
       if (result.error) {
+        logOpsEvent("error", "automation-execute-failed", {
+          gymId,
+          automationId: automation.id,
+          insightId: insight.id,
+          ...serializeError(result.error)
+        });
         return {
           error: result.error,
-          executed
+          executed,
+          skippedByLimit
         };
       }
 
@@ -230,7 +274,8 @@ export async function runAutomationsForInsights(
         if (logError) {
           return {
             error: logError,
-            executed
+            executed,
+            skippedByLimit
           };
         }
       } else if (notificationResult.sent) {
@@ -257,6 +302,7 @@ export async function runAutomationsForInsights(
 
   return {
     error: null,
-    executed
+    executed,
+    skippedByLimit
   };
 }
