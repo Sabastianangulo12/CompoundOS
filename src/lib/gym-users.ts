@@ -1,4 +1,5 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { cache } from "react";
+import type { AppSupabaseClient } from "@/lib/supabase/types";
 import type { Database } from "@/types/database";
 
 export type ActiveGymMembership = {
@@ -20,10 +21,10 @@ type GymUserWithGym = {
   } | null;
 };
 
-export async function getActiveGymMembership(
-  supabase: SupabaseClient<Database>,
+export const getActiveGymMembership = cache(async (
+  supabase: AppSupabaseClient,
   userId: string
-) {
+) => {
   const { data, error } = await supabase
     .from("gym_users")
     .select(
@@ -72,11 +73,11 @@ export async function getActiveGymMembership(
     } satisfies ActiveGymMembership,
     error: null
   };
-}
+});
 
-export async function getCurrentGymContext(
-  supabase: SupabaseClient<Database>
-) {
+export const getCurrentGymContext = cache(async (
+  supabase: AppSupabaseClient
+) => {
   const {
     data: { user },
     error: userError
@@ -112,7 +113,7 @@ export async function getCurrentGymContext(
     },
     error: null
   };
-}
+});
 
 export function buildGymAccessMessage() {
   return "Create or join a gym before accessing gym data.";

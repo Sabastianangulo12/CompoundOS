@@ -1,4 +1,5 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { AppSupabaseClient } from "@/lib/supabase/types";
+import { toOneRelation } from "@/lib/supabase/relations";
 import type { Database } from "@/types/database";
 
 export const billingIntervals = ["monthly", "weekly"] as const;
@@ -8,7 +9,14 @@ export const subscriptionStatuses = [
   "trialing",
   "canceled"
 ] as const;
-export const paymentStatuses = ["succeeded", "failed", "pending"] as const;
+export const paymentStatuses = [
+  "succeeded",
+  "failed",
+  "pending",
+  "scheduled",
+  "overdue",
+  "refunded"
+] as const;
 
 export type BillingInterval = (typeof billingIntervals)[number];
 export type SubscriptionStatus = (typeof subscriptionStatuses)[number];
@@ -62,7 +70,7 @@ export type PaymentWithRelations = Database["public"]["Tables"]["payments"]["Row
 };
 
 export async function getMembershipPlanByIdForGym(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   gymId: string,
   planId: string
 ) {
@@ -75,7 +83,7 @@ export async function getMembershipPlanByIdForGym(
 }
 
 export async function getSubscriptionByIdForGym(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   gymId: string,
   subscriptionId: string
 ) {
@@ -88,7 +96,7 @@ export async function getSubscriptionByIdForGym(
 }
 
 export async function getRevenueSnapshot(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   gymId: string
 ) {
   const [subscriptionsResult, paymentsResult] = await Promise.all([
@@ -96,10 +104,8 @@ export async function getRevenueSnapshot(
       .from("subscriptions")
       .select(
         `
-          *,
+          status,
           membership_plans (
-            id,
-            name,
             price_cents,
             billing_interval
           )
@@ -127,15 +133,22 @@ export async function getRevenueSnapshot(
     };
   }
 
-  const subscriptions =
-    (subscriptionsResult.data as Array<
-      Database["public"]["Tables"]["subscriptions"]["Row"] & {
-        membership_plans: Pick<
+  const subscriptions = ((subscriptionsResult.data ?? []) as Array<{
+    status: Database["public"]["Tables"]["subscriptions"]["Row"]["status"];
+    membership_plans:
+      Pick<
+        Database["public"]["Tables"]["membership_plans"]["Row"],
+        "price_cents" | "billing_interval"
+      > | Array<
+        Pick<
           Database["public"]["Tables"]["membership_plans"]["Row"],
-          "id" | "name" | "price_cents" | "billing_interval"
-        > | null;
-      }
-    >) ?? [];
+          "price_cents" | "billing_interval"
+        >
+      > | null;
+  }>).map((subscription) => ({
+    status: subscription.status,
+    membership_plans: toOneRelation(subscription.membership_plans)
+  }));
 
   const estimatedMonthlyRecurringRevenue = subscriptions.reduce((total, subscription) => {
     if (subscription.status !== "active" && subscription.status !== "trialing") {

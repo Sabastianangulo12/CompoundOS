@@ -1,5 +1,11 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
+import {
+  isTransientRemoteError,
+  logOpsEvent,
+  serializeError,
+  withRetries
+} from "@/lib/observability";
+import type { AppSupabaseClient } from "@/lib/supabase/types";
 import type { Database } from "@/types/database";
 
 type InsightType = Database["public"]["Tables"]["ai_insights"]["Row"]["type"];
@@ -11,6 +17,12 @@ export type NotificationWithMember = Database["public"]["Tables"]["notifications
     first_name: string;
     last_name: string;
   } | null;
+};
+
+type NotificationSendResult = {
+  error: Error | null | unknown;
+  data: Database["public"]["Tables"]["notifications"]["Row"] | null;
+  sent: boolean;
 };
 
 export function mapInsightTypeToNotificationType(
@@ -36,7 +48,7 @@ export function mapInsightTypeToNotificationType(
 }
 
 export async function createAndSendMemberNotification(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   input: {
     gymId: string;
     memberId: string;
@@ -44,7 +56,13 @@ export async function createAndSendMemberNotification(
     body: string;
     type: NotificationType;
   }
-) {
+): Promise<NotificationSendResult> {
+  logOpsEvent("info", "notification-create-start", {
+    gymId: input.gymId,
+    memberId: input.memberId,
+    type: input.type
+  });
+
   const { data: notification, error: notificationError } = await supabase
     .from("notifications")
     .insert({
@@ -59,9 +77,17 @@ export async function createAndSendMemberNotification(
     .single();
 
   if (notificationError || !notification) {
+    logOpsEvent("error", "notification-create-failed", {
+      gymId: input.gymId,
+      memberId: input.memberId,
+      type: input.type,
+      ...serializeError(notificationError)
+    });
+
     return {
       error: notificationError ?? new Error("Notification could not be created."),
-      data: null
+      data: null,
+      sent: false
     };
   }
 
@@ -83,9 +109,17 @@ export async function createAndSendMemberNotification(
       .eq("id", notification.id)
       .eq("gym_id", input.gymId);
 
+    logOpsEvent("error", "notification-token-query-failed", {
+      gymId: input.gymId,
+      memberId: input.memberId,
+      notificationId: notification.id,
+      ...serializeError(tokenError)
+    });
+
     return {
       error: tokenError,
-      data: notification
+      data: notification,
+      sent: false
     };
   }
 
@@ -102,6 +136,12 @@ export async function createAndSendMemberNotification(
       .eq("id", notification.id)
       .eq("gym_id", input.gymId);
 
+    logOpsEvent("warn", "notification-no-push-tokens", {
+      gymId: input.gymId,
+      memberId: input.memberId,
+      notificationId: notification.id
+    });
+
     return {
       error: null,
       data: notification,
@@ -109,33 +149,47 @@ export async function createAndSendMemberNotification(
     };
   }
 
-  const pushResponse = await fetch("https://exp.host/--/api/v2/push/send", {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Accept-Encoding": "gzip, deflate",
-      "Content-Type": "application/json",
-      ...(env.expoPushAccessToken
-        ? {
-            Authorization: `Bearer ${env.expoPushAccessToken}`
-          }
-        : {})
-    },
-    body: JSON.stringify(
-      expoTokens.map((to) => ({
-        to,
-        title: input.title,
-        body: input.body,
-        sound: "default",
-        data: {
-          memberId: input.memberId,
-          gymId: input.gymId,
-          notificationId: notification.id,
-          type: input.type
-        }
-      }))
-    )
-  }).catch((error) => ({
+  const pushResponse = await withRetries(
+    "expo-push-send",
+    () =>
+      fetch("https://exp.host/--/api/v2/push/send", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Accept-Encoding": "gzip, deflate",
+          "Content-Type": "application/json",
+          ...(env.expoPushAccessToken
+            ? {
+                Authorization: `Bearer ${env.expoPushAccessToken}`
+              }
+            : {})
+        },
+        body: JSON.stringify(
+          expoTokens.map((to) => ({
+            to,
+            title: input.title,
+            body: input.body,
+            sound: "default",
+            data: {
+              memberId: input.memberId,
+              gymId: input.gymId,
+              notificationId: notification.id,
+              type: input.type
+            }
+          }))
+        )
+      }),
+    {
+      retries: 3,
+      delayMs: 500,
+      shouldRetry: isTransientRemoteError,
+      context: {
+        gymId: input.gymId,
+        memberId: input.memberId,
+        notificationId: notification.id
+      }
+    }
+  ).catch((error) => ({
     ok: false,
     status: 500,
     json: async () => ({
@@ -168,7 +222,7 @@ export async function createAndSendMemberNotification(
     .eq("id", notification.id)
     .eq("gym_id", input.gymId);
 
-  return {
+  const result = {
     error:
       updateError ??
       (!wasSent
@@ -176,5 +230,84 @@ export async function createAndSendMemberNotification(
         : null),
     data: notification,
     sent: wasSent
+  };
+
+  logOpsEvent(result.error ? "error" : "info", "notification-send-finished", {
+    gymId: input.gymId,
+    memberId: input.memberId,
+    notificationId: notification.id,
+    sent: wasSent,
+    status: wasSent ? "sent" : "failed",
+    ...(result.error ? serializeError(result.error) : {})
+  });
+
+  return result;
+}
+
+export async function sendNotificationToGymMembers(
+  supabase: AppSupabaseClient,
+  input: {
+    gymId: string;
+    title: string;
+    body: string;
+    type: NotificationType;
+    memberIds?: string[];
+  }
+) {
+  let memberIds = input.memberIds ?? [];
+
+  if (memberIds.length === 0) {
+    const membersResult = await supabase
+      .from("members")
+      .select("id")
+      .eq("gym_id", input.gymId)
+      .neq("status", "canceled");
+
+    if (membersResult.error) {
+      return {
+        error: membersResult.error,
+        created: 0,
+        sent: 0,
+        failed: 0
+      };
+    }
+
+    memberIds = (membersResult.data ?? []).map((member) => member.id);
+  }
+
+  let created = 0;
+  let sent = 0;
+  let failed = 0;
+  let lastError: Error | null = null;
+
+  for (const memberId of memberIds) {
+    const result = await createAndSendMemberNotification(supabase, {
+      gymId: input.gymId,
+      memberId,
+      title: input.title,
+      body: input.body,
+      type: input.type
+    });
+
+    if (result.data) {
+      created += 1;
+    }
+
+    if (result.sent) {
+      sent += 1;
+    } else {
+      failed += 1;
+    }
+
+    if (result.error && !lastError) {
+      lastError = result.error instanceof Error ? result.error : new Error(String(result.error));
+    }
+  }
+
+  return {
+    error: lastError,
+    created,
+    sent,
+    failed
   };
 }

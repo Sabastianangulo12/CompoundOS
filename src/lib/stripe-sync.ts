@@ -1,8 +1,12 @@
 import type Stripe from "stripe";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAppUrl, getStripe } from "@/lib/stripe/server";
+import {
+  ensureRecoveryCaseForPayment,
+  markBillingRecoveryResolved
+} from "@/lib/billing-recovery";
 import { createAndSendMemberNotification } from "@/lib/notifications";
 import { formatCurrencyFromCents } from "@/lib/revenue";
+import type { AppSupabaseClient } from "@/lib/supabase/types";
 import type { Database } from "@/types/database";
 
 type GymRow = Database["public"]["Tables"]["gyms"]["Row"];
@@ -15,6 +19,20 @@ type StripeSubscriptionMetadata = {
   memberId: string | null;
   membershipPlanId: string | null;
 };
+
+export function formatStripeConnectSetupError(error: unknown) {
+  const fallback =
+    error instanceof Error ? error.message : "Stripe onboarding could not start.";
+
+  if (
+    fallback.includes("signed up for Connect") ||
+    fallback.includes("dashboard.stripe.com/connect")
+  ) {
+    return "Stripe Connect is not enabled on your Stripe platform yet. Open dashboard.stripe.com/connect in Stripe, finish Connect setup there, then return here and try again.";
+  }
+
+  return fallback;
+}
 
 function getSubscriptionMetadata(
   subscription: Stripe.Subscription
@@ -41,7 +59,7 @@ function normalizeSubscriptionStatus(
 }
 
 export async function ensureStripeConnectedAccountForGym(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   gym: GymRow
 ) {
   const stripe = getStripe();
@@ -96,7 +114,7 @@ export async function ensureStripeConnectedAccountForGym(
 }
 
 export async function createConnectOnboardingLink(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   gym: GymRow
 ) {
   const stripe = getStripe();
@@ -112,7 +130,7 @@ export async function createConnectOnboardingLink(
 }
 
 export async function syncMembershipPlanToStripe(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   plan: PlanRow
 ) {
   const stripe = getStripe();
@@ -195,7 +213,7 @@ export async function syncMembershipPlanToStripe(
 }
 
 export async function ensureStripeCustomerForMember(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   member: MemberRow,
   gym: GymRow
 ) {
@@ -231,7 +249,7 @@ export async function ensureStripeCustomerForMember(
 }
 
 export async function createSubscriptionCheckoutSession(input: {
-  supabase: SupabaseClient<Database>;
+  supabase: AppSupabaseClient;
   gym: GymRow;
   member: MemberRow;
   plan: PlanRow;
@@ -252,7 +270,7 @@ export async function createSubscriptionCheckoutSession(input: {
 
   return stripe.checkout.sessions.create({
     mode: "subscription",
-    success_url: `${appUrl}/dashboard/revenue?message=${encodeURIComponent("Stripe checkout completed. Subscription sync may take a moment.")}`,
+    success_url: `${appUrl}/api/stripe/checkout/return?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${appUrl}/dashboard/revenue?message=${encodeURIComponent("Stripe checkout canceled.")}`,
     customer: customerId,
     client_reference_id: input.member.id,
@@ -281,8 +299,49 @@ export async function createSubscriptionCheckoutSession(input: {
   });
 }
 
+export async function syncStripeCheckoutSession(
+  supabase: AppSupabaseClient,
+  sessionId: string
+) {
+  const stripe = getStripe();
+  const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+  if (session.mode !== "subscription") {
+    throw new Error("Stripe session was not a subscription checkout.");
+  }
+
+  const stripeSubscriptionId =
+    typeof session.subscription === "string"
+      ? session.subscription
+      : session.subscription?.id ?? null;
+
+  if (!stripeSubscriptionId) {
+    throw new Error("Stripe subscription was missing from checkout session.");
+  }
+
+  const stripeSubscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+  const subscription = await syncStripeSubscription(supabase, stripeSubscription);
+
+  let paymentResult: Awaited<ReturnType<typeof syncStripeInvoice>> | null = null;
+  const latestInvoiceId =
+    typeof stripeSubscription.latest_invoice === "string"
+      ? stripeSubscription.latest_invoice
+      : stripeSubscription.latest_invoice?.id ?? null;
+
+  if (latestInvoiceId) {
+    const invoice = await stripe.invoices.retrieve(latestInvoiceId);
+    paymentResult = await syncStripeInvoice(supabase, invoice);
+  }
+
+  return {
+    sessionId: session.id,
+    subscription,
+    payment: paymentResult?.payment ?? null
+  };
+}
+
 export async function updateGymStripeState(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   gymId: string,
   account: Stripe.Account
 ) {
@@ -303,7 +362,7 @@ export async function updateGymStripeState(
 }
 
 async function getLocalSubscriptionByStripeId(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   stripeSubscriptionId: string
 ) {
   const { data, error } = await supabase
@@ -320,7 +379,7 @@ async function getLocalSubscriptionByStripeId(
 }
 
 async function getExistingLiveSubscriptionForMember(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   gymId: string,
   memberId: string
 ) {
@@ -344,9 +403,13 @@ async function getExistingLiveSubscriptionForMember(
 }
 
 export async function syncStripeSubscription(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   subscription: Stripe.Subscription
 ) {
+  const subscriptionRecord = subscription as Stripe.Subscription & {
+    current_period_start?: number;
+    current_period_end?: number;
+  };
   const metadata = getSubscriptionMetadata(subscription);
 
   if (!metadata.gymId || !metadata.memberId) {
@@ -358,11 +421,11 @@ export async function syncStripeSubscription(
     member_id: metadata.memberId,
     membership_plan_id: metadata.membershipPlanId,
     status: normalizeSubscriptionStatus(subscription.status),
-    current_period_start: subscription.current_period_start
-      ? new Date(subscription.current_period_start * 1000).toISOString()
+    current_period_start: subscriptionRecord.current_period_start
+      ? new Date(subscriptionRecord.current_period_start * 1000).toISOString()
       : null,
-    current_period_end: subscription.current_period_end
-      ? new Date(subscription.current_period_end * 1000).toISOString()
+    current_period_end: subscriptionRecord.current_period_end
+      ? new Date(subscriptionRecord.current_period_end * 1000).toISOString()
       : null,
     cancel_at_period_end: subscription.cancel_at_period_end,
     stripe_subscription_id: subscription.id
@@ -404,7 +467,7 @@ export async function syncStripeSubscription(
 }
 
 async function createFailedPaymentInsight(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   input: {
     gymId: string;
     memberId: string;
@@ -445,12 +508,34 @@ async function createFailedPaymentInsight(
 }
 
 export async function syncStripeInvoice(
-  supabase: SupabaseClient<Database>,
+  supabase: AppSupabaseClient,
   invoice: Stripe.Invoice
 ) {
   const stripe = getStripe();
+  const invoiceRecord = invoice as Stripe.Invoice & {
+    subscription?: string | { id: string } | null;
+    payment_intent?: string | { id: string } | null;
+    parent?: {
+      subscription_details?: {
+        subscription?: string | null;
+      } | null;
+    } | null;
+    lines?: {
+      data?: Array<{
+        parent?: {
+          subscription_item_details?: {
+            subscription?: string | null;
+          } | null;
+        } | null;
+      }>;
+    } | null;
+  };
   const stripeSubscriptionId =
-    typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id;
+    typeof invoiceRecord.subscription === "string"
+      ? invoiceRecord.subscription
+      : invoiceRecord.subscription?.id ??
+        invoiceRecord.parent?.subscription_details?.subscription ??
+        invoiceRecord.lines?.data?.[0]?.parent?.subscription_item_details?.subscription;
 
   if (!stripeSubscriptionId) {
     return null;
@@ -482,20 +567,39 @@ export async function syncStripeInvoice(
       invoice.status_transitions.paid_at
         ? new Date(invoice.status_transitions.paid_at * 1000).toISOString()
         : null,
+    due_at: invoice.due_date
+      ? new Date(invoice.due_date * 1000).toISOString()
+      : null,
+    invoice_number: invoice.number ?? null,
+    description: invoice.description ?? `Stripe invoice ${invoice.id}`,
+    payment_type: "membership",
+    accounting_category: "membership",
     stripe_payment_intent_id:
-      typeof invoice.payment_intent === "string"
-        ? invoice.payment_intent
-        : invoice.payment_intent?.id ?? null,
+      typeof invoiceRecord.payment_intent === "string"
+        ? invoiceRecord.payment_intent
+        : invoiceRecord.payment_intent?.id ?? null,
     stripe_invoice_id: invoice.id
   } satisfies Database["public"]["Tables"]["payments"]["Insert"];
 
-  const paymentResult = await supabase
+  const existingPaymentResult = await supabase
     .from("payments")
-    .upsert(paymentPayload, {
-      onConflict: "stripe_invoice_id"
-    })
-    .select("*")
-    .single();
+    .select("id")
+    .eq("stripe_invoice_id", invoice.id)
+    .maybeSingle();
+
+  if (existingPaymentResult.error) {
+    throw new Error(existingPaymentResult.error.message);
+  }
+
+  const paymentResult = existingPaymentResult.data
+    ? await supabase
+        .from("payments")
+        .update(paymentPayload)
+        .eq("id", existingPaymentResult.data.id)
+        .eq("gym_id", localSubscription.gym_id)
+        .select("*")
+        .single()
+    : await supabase.from("payments").insert(paymentPayload).select("*").single();
 
   if (paymentResult.error) {
     throw new Error(paymentResult.error.message);
@@ -521,11 +625,13 @@ export async function syncStripeInvoice(
   }
 
   if (paymentStatus === "failed" && localSubscription.member_id) {
+    await ensureRecoveryCaseForPayment(supabase, paymentResult.data);
+
     await createFailedPaymentInsight(supabase, {
       gymId: localSubscription.gym_id,
       memberId: localSubscription.member_id,
       amountCents: paymentPayload.amount_cents,
-      invoiceId: invoice.id
+      invoiceId: invoice.id ?? "unknown_invoice"
     });
 
     await createAndSendMemberNotification(supabase, {
@@ -535,6 +641,26 @@ export async function syncStripeInvoice(
       body: "Your recent membership payment failed. Please update your payment method with the gym.",
       type: "billing"
     });
+  }
+
+  if (paymentStatus === "succeeded") {
+    const openCaseResult = await supabase
+      .from("billing_recovery_cases")
+      .select("*")
+      .eq("gym_id", localSubscription.gym_id)
+      .or(`payment_id.eq.${paymentResult.data.id},stripe_invoice_id.eq.${invoice.id}`)
+      .in("status", ["open", "retrying", "waiting_on_member"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!openCaseResult.error && openCaseResult.data) {
+      await markBillingRecoveryResolved(
+        supabase,
+        openCaseResult.data,
+        "Stripe invoice was paid."
+      );
+    }
   }
 
   return {

@@ -2,14 +2,31 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { env } from "@/lib/env";
+import { syncMemberCardSetupSession } from "@/lib/member-billing";
+import {
+  createOpsRequestContext,
+  getDurationMs,
+  logOpsEvent,
+  serializeError
+} from "@/lib/observability";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getStripe } from "@/lib/stripe/server";
-import { syncStripeInvoice, syncStripeSubscription } from "@/lib/stripe-sync";
+import {
+  syncStripeCheckoutSession,
+  syncStripeInvoice,
+  syncStripeSubscription,
+  updateGymStripeState
+} from "@/lib/stripe-sync";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const context = createOpsRequestContext("stripe-webhook");
+
   if (!env.stripeWebhookSecret) {
+    logOpsEvent("error", "stripe-webhook-missing-secret", {
+      requestId: context.requestId
+    });
     return NextResponse.json(
       {
         error: "STRIPE_WEBHOOK_SECRET is not configured."
@@ -24,6 +41,9 @@ export async function POST(request: Request) {
   const signature = (await headers()).get("stripe-signature");
 
   if (!signature) {
+    logOpsEvent("warn", "stripe-webhook-missing-signature", {
+      requestId: context.requestId
+    });
     return NextResponse.json(
       {
         error: "Missing Stripe signature."
@@ -40,6 +60,11 @@ export async function POST(request: Request) {
   try {
     event = stripe.webhooks.constructEvent(rawBody, signature, env.stripeWebhookSecret);
   } catch (error) {
+    logOpsEvent("warn", "stripe-webhook-verification-failed", {
+      requestId: context.requestId,
+      durationMs: getDurationMs(context),
+      ...serializeError(error)
+    });
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Webhook verification failed."
@@ -58,6 +83,12 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (existingEventResult.error) {
+    logOpsEvent("error", "stripe-webhook-existing-event-query-failed", {
+      requestId: context.requestId,
+      eventId: event.id,
+      eventType: event.type,
+      ...serializeError(existingEventResult.error)
+    });
     return NextResponse.json(
       {
         error: existingEventResult.error.message
@@ -69,6 +100,12 @@ export async function POST(request: Request) {
   }
 
   if (existingEventResult.data?.processed_at) {
+    logOpsEvent("info", "stripe-webhook-duplicate", {
+      requestId: context.requestId,
+      eventId: event.id,
+      eventType: event.type,
+      durationMs: getDurationMs(context)
+    });
     return NextResponse.json({
       received: true,
       duplicate: true
@@ -83,11 +120,23 @@ export async function POST(request: Request) {
 
     if (insertResult.error) {
       if (insertResult.error.code === "23505") {
+        logOpsEvent("info", "stripe-webhook-duplicate-race", {
+          requestId: context.requestId,
+          eventId: event.id,
+          eventType: event.type
+        });
         return NextResponse.json({
           received: true,
           duplicate: true
         });
       }
+
+      logOpsEvent("error", "stripe-webhook-insert-failed", {
+        requestId: context.requestId,
+        eventId: event.id,
+        eventType: event.type,
+        ...serializeError(insertResult.error)
+      });
 
       return NextResponse.json(
         {
@@ -107,15 +156,44 @@ export async function POST(request: Request) {
         await syncStripeSubscription(supabase, event.data.object as Stripe.Subscription);
         break;
       }
+      case "checkout.session.completed": {
+        const session = event.data.object as Stripe.Checkout.Session;
+
+        if (session.mode === "setup" && session.metadata?.flow === "member_card_setup") {
+          await syncMemberCardSetupSession(supabase, {
+            session
+          });
+        }
+        if (session.mode === "subscription") {
+          await syncStripeCheckoutSession(supabase, session.id);
+        }
+        break;
+      }
       case "invoice.paid":
       case "invoice.payment_failed": {
         await syncStripeInvoice(supabase, event.data.object as Stripe.Invoice);
+        break;
+      }
+      case "account.updated": {
+        const account = event.data.object as Stripe.Account;
+        const gymId = account.metadata?.gymId;
+
+        if (gymId) {
+          await updateGymStripeState(supabase, gymId, account);
+        }
         break;
       }
       default:
         break;
     }
   } catch (error) {
+    logOpsEvent("error", "stripe-webhook-processing-failed", {
+      requestId: context.requestId,
+      eventId: event.id,
+      eventType: event.type,
+      durationMs: getDurationMs(context),
+      ...serializeError(error)
+    });
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Webhook processing failed."
@@ -134,6 +212,12 @@ export async function POST(request: Request) {
     .eq("stripe_event_id", event.id);
 
   if (processedResult.error) {
+    logOpsEvent("error", "stripe-webhook-mark-processed-failed", {
+      requestId: context.requestId,
+      eventId: event.id,
+      eventType: event.type,
+      ...serializeError(processedResult.error)
+    });
     return NextResponse.json(
       {
         error: processedResult.error.message
@@ -143,6 +227,13 @@ export async function POST(request: Request) {
       }
     );
   }
+
+  logOpsEvent("info", "stripe-webhook-processed", {
+    requestId: context.requestId,
+    eventId: event.id,
+    eventType: event.type,
+    durationMs: getDurationMs(context)
+  });
 
   return NextResponse.json({
     received: true
