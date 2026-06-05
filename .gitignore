@@ -6,3 +6,7 @@ dist
 coverage
 *.log
 .expo
+.expo*
+member-app/.expo*
+*.tsbuildinfo
+.ai-page.html
